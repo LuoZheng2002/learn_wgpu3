@@ -1,0 +1,18 @@
+[package]
+name = "learn_wgpu3"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytemuck = "1.22.0"
+cgmath = "0.18.0"
+env_logger = "0.11.8"
+image = "0.25.6"
+lazy_static = "1.5.0"
+log = "0.4.27"
+moka = {version="0.12.10", features=["sync"]}
+russimp = "3.2.0"
+rusttype = "0.9.3"
+tokio = {version="1.44.1", features=["full"]}
+wgpu = "24.0.3"
+winit = "0.30.9"
