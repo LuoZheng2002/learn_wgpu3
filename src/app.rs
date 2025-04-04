@@ -1,9 +1,16 @@
-
 use std::sync::Arc;
 
-use winit::{application::ApplicationHandler, event::WindowEvent, event_loop::ActiveEventLoop, window::{Window, WindowId}};
+use winit::{
+    application::ApplicationHandler,
+    event::WindowEvent,
+    event_loop::ActiveEventLoop,
+    window::{Window, WindowId},
+};
 
-use crate::{render_context::{self, RenderContext}, state::State};
+use crate::{
+    render_context::{self, RenderContext},
+    state::State,
+};
 
 #[derive(Default)]
 pub struct App {
@@ -14,7 +21,9 @@ pub struct App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = event_loop.create_window(Window::default_attributes()).unwrap();
+        let window = event_loop
+            .create_window(Window::default_attributes())
+            .unwrap();
         let window = Arc::new(window);
         self.render_context = Some(RenderContext::new(window.clone()));
         self.window = Some(window);
@@ -25,16 +34,19 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => {
                 println!("The close button was pressed; stopping");
                 event_loop.exit();
-            },
+            }
             WindowEvent::RedrawRequested => {
                 self.window.as_ref().unwrap().request_redraw();
                 self.state.update();
-                match self.render_context.as_mut().unwrap().render(&mut self.state) {
+                match self
+                    .render_context
+                    .as_mut()
+                    .unwrap()
+                    .render(&mut self.state)
+                {
                     Ok(_) => {}
                     // Reconfigure the surface if it's lost or outdated
-                    Err(
-                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                    ) => {
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                         let new_size = self.render_context.as_ref().unwrap().size;
                         self.render_context.as_mut().unwrap().resize(new_size);
                     }
@@ -49,8 +61,8 @@ impl ApplicationHandler for App {
                         log::warn!("Surface timeout")
                     }
                 }
-            },
-            WindowEvent::Resized(new_size)=>{
+            }
+            WindowEvent::Resized(new_size) => {
                 self.render_context.as_mut().unwrap().resize(new_size);
             }
             _ => (),

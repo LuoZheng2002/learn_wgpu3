@@ -1,14 +1,14 @@
-
-
-pub struct OpaqueMeshInstance{
+pub struct OpaqueMeshInstance {
     pub position: cgmath::Vector3<f32>,
     pub rotation: cgmath::Quaternion<f32>,
 }
 
-impl OpaqueMeshInstance{
+impl OpaqueMeshInstance {
     pub fn to_raw(&self) -> OpaqueMeshInstanceRaw {
         OpaqueMeshInstanceRaw {
-            model: (cgmath::Matrix4::from_translation(self.position) * cgmath::Matrix4::from(self.rotation)).into(),
+            model: (cgmath::Matrix4::from_translation(self.position)
+                * cgmath::Matrix4::from(self.rotation))
+            .into(),
         }
     }
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -49,10 +49,8 @@ impl OpaqueMeshInstance{
     }
 }
 
-
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct OpaqueMeshInstanceRaw {
     model: [[f32; 4]; 4],
 }
-

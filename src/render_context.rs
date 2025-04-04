@@ -1,14 +1,21 @@
 use std::{collections::HashMap, sync::Arc};
 
 use tokio::runtime::Runtime;
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt, CompositeAlphaMode};
 use winit::window::Window;
 
-use crate::{cache::{CacheKey, CacheValue, CACHE}, camera_uniform::CameraUniform, mesh_meta::MeshMeta, model_info::{self, ModelInfo}, my_texture::MyTexture, opaque_mesh_instance::OpaqueMeshInstance, opaque_pipeline::{self, OpaquePipeline}, state::State};
+use crate::{
+    cache::{CACHE, CacheKey, CacheValue},
+    camera_uniform::CameraUniform,
+    mesh_meta::MeshMeta,
+    model_data::{self, ModelData},
+    my_texture::MyTexture,
+    opaque_mesh_instance::OpaqueMeshInstance,
+    opaque_pipeline::{self, OpaquePipeline},
+    state::State,
+};
 
-
-
-pub struct RenderContext{
+pub struct RenderContext {
     pub surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -21,14 +28,11 @@ pub struct RenderContext{
     pub camera_bind_group: wgpu::BindGroup,
     pub depth_texture: MyTexture,
 
-    
     pub opaque_pipeline: OpaquePipeline,
 }
 
-
-impl RenderContext{
-    pub fn new(window: Arc<Window>)->Self{
-
+impl RenderContext {
+    pub fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
 
         // instance represents the connection to the graphics API and system GPU drivers
@@ -41,30 +45,33 @@ impl RenderContext{
         // tokio runtime for blocking async tasks
         let runtime = Runtime::new().unwrap();
         // adapter represents a GPU
-        let adapter = runtime.block_on(instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
+        let adapter = runtime
+            .block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
-            },
-        )).unwrap();
+            }))
+            .unwrap();
 
-        let (device, queue) = runtime.block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                label: None,
-                memory_hints: Default::default(),
-            },
-            None, // Trace path
-        )).unwrap();
-
+        let (device, queue) = runtime
+            .block_on(adapter.request_device(
+                &wgpu::DeviceDescriptor {
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::default(),
+                    label: None,
+                    memory_hints: Default::default(),
+                },
+                None, // Trace path
+            ))
+            .unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
         // Shader code in this tutorial assumes an sRGB surface texture. Using a different
         // one will result in all the colors coming out darker. If you want to support non
         // sRGB surfaces, you'll need to account for that when drawing to the frame.
-        let surface_format = surface_caps.formats.iter()
+        let surface_format = surface_caps
+            .formats
+            .iter()
             .find(|f| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
@@ -76,11 +83,10 @@ impl RenderContext{
             height: size.height,
             // enable vsync with fifo present mode
             present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: surface_caps.alpha_modes[0],
+            alpha_mode: CompositeAlphaMode::Opaque,
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
-        
 
         let camera_uniform = CameraUniform::default();
 
@@ -91,19 +97,20 @@ impl RenderContext{
         });
         let depth_texture = MyTexture::create_depth_texture(&device, &config, "depth texture");
 
-        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-            label: Some("view_bind_group_layout"),
-        });
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("view_bind_group_layout"),
+            });
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &camera_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
@@ -113,11 +120,11 @@ impl RenderContext{
             label: Some("camera_bind_group"),
         });
         let opaque_pipeline = OpaquePipeline::new(&device, &config, &camera_bind_group_layout);
-        RenderContext { 
-            surface, 
+        RenderContext {
+            surface,
             device,
-            queue, 
-            config, 
+            queue,
+            config,
             size,
             opaque_pipeline,
             camera_buffer,
@@ -131,12 +138,15 @@ impl RenderContext{
         self.config.width = new_size.width;
         self.config.height = new_size.height;
         self.surface.configure(&self.device, &self.config);
-        self.depth_texture = MyTexture::create_depth_texture(&self.device, &self.config, "depth texture");
+        self.depth_texture =
+            MyTexture::create_depth_texture(&self.device, &self.config, "depth texture");
     }
 
-    pub fn render(&mut self, state: &mut State)->Result<(), wgpu::SurfaceError>{
+    pub fn render(&mut self, state: &mut State) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
         // update camera transform
         let aspect = self.config.width as f32 / self.config.height as f32;
         let camera_uniform = CameraUniform::new(&state.camera, aspect, true);
@@ -146,31 +156,53 @@ impl RenderContext{
             bytemuck::cast_slice(&[camera_uniform]),
         );
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
         // convert model instances to mesh instances
         let mut opaque_meshes = HashMap::<MeshMeta, Vec<OpaqueMeshInstance>>::new();
-        for (model_meta, instances) in state.render_submission.iter(){
+        for (model_meta, instances) in state.render_submission.iter() {
             // need to get the model info to determine which meshes are opaque
-            let model_info = CACHE.get_with(CacheKey::ModelMeta(model_meta.clone()), ||{
+            let model_data = CACHE.get_with(CacheKey::ModelMeta(model_meta.clone()), || {
                 // temp:
-                let model_info = ModelInfo{opaque_mesh_indices: vec![0], transparent_mesh_indices: vec![]};
-                Arc::new(CacheValue::ModelInfo(model_info))
+                let model_data = model_meta.load_model();
+                Arc::new(CacheValue::ModelData(model_data))
             });
-            let model_info = match model_info.as_ref(){
-                CacheValue::ModelInfo(model_info) => model_info,
+            let model_info = match model_data.as_ref() {
+                CacheValue::ModelData(model_info) => model_info,
                 _ => unreachable!(),
             };
-            let mesh_instances = instances.iter().map(|instance| OpaqueMeshInstance{position: instance.position, rotation:instance.rotation}).collect::<Vec<_>>();
+            let mesh_instances = instances
+                .iter()
+                .map(|instance| OpaqueMeshInstance {
+                    position: instance.position,
+                    rotation: instance.rotation,
+                })
+                .collect::<Vec<_>>();
             // temp
-            opaque_meshes.insert(MeshMeta { file_path: model_meta.path.clone(), mesh_index: 0 }, mesh_instances);
+            opaque_meshes.insert(
+                MeshMeta {
+                    file_path: model_meta.path.clone(),
+                    mesh_index: 0,
+                },
+                mesh_instances,
+            );
         }
 
-        self.opaque_pipeline.render(&opaque_meshes, &mut encoder, &self.device, &self.queue, &view, &self.depth_texture.view, &self.camera_bind_group);
+        self.opaque_pipeline.render(
+            &opaque_meshes,
+            &mut encoder,
+            &self.device,
+            &self.queue,
+            &view,
+            &self.depth_texture.view,
+            &self.camera_bind_group,
+        );
 
         state.render_submission.clear();
-    
+
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();

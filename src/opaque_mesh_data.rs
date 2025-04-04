@@ -1,18 +1,24 @@
-
 use lazy_static::lazy_static;
-use wgpu::{util::DeviceExt, BindGroupLayout};
+use wgpu::{BindGroupLayout, util::DeviceExt};
 
-use crate::{my_texture::{MyTexture, TextureSource}, vertex::Vertex};
+use crate::{
+    my_texture::{MyTexture, TextureSource},
+    vertex::Vertex,
+};
 
-pub struct OpaqueMeshInfo{
+pub struct OpaqueMeshData {
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub num_indices: u32,
     pub texture_bind_group: wgpu::BindGroup,
 }
 
-impl OpaqueMeshInfo{
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, texture_bind_group_layout: &BindGroupLayout) -> Self{
+impl OpaqueMeshData {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture_bind_group_layout: &BindGroupLayout,
+    ) -> Self {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&VERTICES),
@@ -24,7 +30,13 @@ impl OpaqueMeshInfo{
             usage: wgpu::BufferUsages::INDEX,
         });
         let num_indices = INDICES.len() as u32;
-        let texture = MyTexture::load(TextureSource::FilePath("assets/grass.jpg".to_string()), device, queue, Some("grass texture")).unwrap();
+        let texture = MyTexture::load(
+            TextureSource::FilePath("assets/grass.jpg".to_string()),
+            device,
+            queue,
+            Some("grass texture"),
+        )
+        .unwrap();
 
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Texture Bind Group"),
@@ -40,17 +52,16 @@ impl OpaqueMeshInfo{
                 },
             ],
         });
-        Self { 
-            vertex_buffer, 
-            index_buffer, 
-            num_indices, 
-            texture_bind_group
+        Self {
+            vertex_buffer,
+            index_buffer,
+            num_indices,
+            texture_bind_group,
         }
     }
 }
 
-
-lazy_static!{
+lazy_static! {
     #[rustfmt::skip]
     static ref VERTICES: &'static [Vertex] = &[
         // Front face (Z = 1)

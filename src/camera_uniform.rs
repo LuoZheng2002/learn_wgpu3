@@ -14,7 +14,7 @@ pub struct CameraUniform {
 impl CameraUniform {
     pub fn new(camera: &MyCamera, aspect: f32, translate: bool) -> Self {
         let mut view = camera.build_view_matrix();
-        if !translate{
+        if !translate {
             view[3][0] = 0.0;
             view[3][1] = 0.0;
             view[3][2] = 0.0;
