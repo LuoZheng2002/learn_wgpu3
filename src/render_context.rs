@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use tokio::runtime::Runtime;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-use crate::{camera_uniform::CameraUniform, my_texture::MyTexture, opaque_pipeline::{self, OpaquePipeline}};
+use crate::{cache::{CacheKey, CacheValue, CACHE}, camera_uniform::CameraUniform, mesh_meta::MeshMeta, model_info::{self, ModelInfo}, my_texture::MyTexture, opaque_mesh_instance::OpaqueMeshInstance, opaque_pipeline::{self, OpaquePipeline}, state::State};
 
 
 
@@ -127,41 +127,47 @@ impl RenderContext{
         }
     }
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        if new_size.width > 0 && new_size.height > 0 {
-            self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
-            self.surface.configure(&self.device, &self.config);
-        }
+        self.size = new_size;
+        self.config.width = new_size.width;
+        self.config.height = new_size.height;
+        self.surface.configure(&self.device, &self.config);
+        self.depth_texture = MyTexture::create_depth_texture(&self.device, &self.config, "depth texture");
     }
 
-    pub fn render(&mut self)->Result<(), wgpu::SurfaceError>{
+    pub fn render(&mut self, state: &mut State)->Result<(), wgpu::SurfaceError>{
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        // update camera transform
+        let aspect = self.config.width as f32 / self.config.height as f32;
+        let camera_uniform = CameraUniform::new(&state.camera, aspect, true);
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[camera_uniform]),
+        );
+
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
         });
-        {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
+        // convert model instances to mesh instances
+        let mut opaque_meshes = HashMap::<MeshMeta, Vec<OpaqueMeshInstance>>::new();
+        for (model_meta, instances) in state.render_submission.iter(){
+            // need to get the model info to determine which meshes are opaque
+            let model_info = CACHE.get_with(CacheKey::ModelMeta(model_meta.clone()), ||{
+                // temp:
+                let model_info = ModelInfo{opaque_mesh_indices: vec![0], transparent_mesh_indices: vec![]};
+                Arc::new(CacheValue::ModelInfo(model_info))
             });
+            let model_info = match model_info.as_ref(){
+                CacheValue::ModelInfo(model_info) => model_info,
+                _ => unreachable!(),
+            };
+            let mesh_instances = instances.iter().map(|instance| OpaqueMeshInstance{position: instance.position, rotation:instance.rotation}).collect::<Vec<_>>();
+            // temp
+            opaque_meshes.insert(MeshMeta { file_path: model_meta.path.clone(), mesh_index: 0 }, mesh_instances);
         }
+
+        self.opaque_pipeline.render(&opaque_meshes, &mut encoder, &self.device, &self.queue, &view, &self.depth_texture.view, &self.camera_bind_group);
     
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));

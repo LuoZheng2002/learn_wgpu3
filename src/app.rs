@@ -29,8 +29,7 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 self.window.as_ref().unwrap().request_redraw();
                 self.state.update();
-
-                match self.render_context.as_mut().unwrap().render() {
+                match self.render_context.as_mut().unwrap().render(&mut self.state) {
                     Ok(_) => {}
                     // Reconfigure the surface if it's lost or outdated
                     Err(

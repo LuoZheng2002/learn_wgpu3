@@ -43,11 +43,10 @@ impl MyTexture {
     }
     pub fn load(
         texture_source: TextureSource,
-        render_context: &render_context::RenderContext,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
         label: Option<&str>,
     ) -> Result<Self, image::ImageError> {
-        let device = &render_context.device;
-        let queue = &render_context.queue;
         let img = match texture_source {
             TextureSource::FilePath(ref file_path) => Self::load_image_from_file_path(file_path)?,
             TextureSource::TextCharacter { character, font_file_path } => Self::load_image_from_text_character(character, font_file_path),

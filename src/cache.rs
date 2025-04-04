@@ -3,16 +3,18 @@ use std::{any::TypeId, sync::Arc};
 use lazy_static::lazy_static;
 use moka::sync::Cache;
 
-use crate::{mesh_meta::MeshMeta, opaque_mesh_model::OpaqueMeshModel};
+use crate::{mesh_meta::MeshMeta, model_info::ModelInfo, model_meta::ModelMeta, opaque_mesh_info::OpaqueMeshInfo};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CacheKey{
+    ModelMeta(ModelMeta),
     OpaqueMeshMeta(MeshMeta),
     Placeholder,
 }
 
 pub enum CacheValue{
-    OpaqueMeshModel(OpaqueMeshModel),
+    ModelInfo(ModelInfo),
+    OpaqueMeshModel(OpaqueMeshInfo),
     Placeholder,
 }
 
