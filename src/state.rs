@@ -1,5 +1,7 @@
 use std::{collections::HashMap, time::Instant};
 
+use cgmath::{Euler, Quaternion};
+
 use crate::{mesh_meta::MeshMeta, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, opaque_mesh_instance::OpaqueMeshInstance, render_context::RenderContext};
 
 // model path, 
@@ -40,8 +42,8 @@ impl State{
         assert!(delta_time >= 0.0);
         *prev_time = current_time;
         let model_meta = ModelMeta{path: "assets/mesh.obj".to_string()};
-        let instance1 = ModelInstance{position: [0.0, 0.0, 0.0].into(), rotation: [0.0, 0.0, 0.0, 1.0].into()};
-        let instance2 = ModelInstance{position: [1.0, 0.0, 0.5].into(), rotation: [0.0, 0.0, 0.0, 1.0].into()};
+        let instance1 = ModelInstance{position: [0.0, 0.0, 0.0].into(), rotation: Quaternion::from(Euler::new(cgmath::Rad(current_time), cgmath::Rad(current_time), cgmath::Rad(current_time)))};
+        let instance2 = ModelInstance{position: [1.0, 0.0, 0.5].into(), rotation: Quaternion::from(Euler::new(cgmath::Rad(current_time), cgmath::Rad(current_time), cgmath::Rad(current_time)))};
         self.submit_renderable(model_meta.clone(), instance1);
         self.submit_renderable(model_meta.clone(), instance2);
     }

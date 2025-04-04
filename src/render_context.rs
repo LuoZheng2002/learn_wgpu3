@@ -168,6 +168,8 @@ impl RenderContext{
         }
 
         self.opaque_pipeline.render(&opaque_meshes, &mut encoder, &self.device, &self.queue, &view, &self.depth_texture.view, &self.camera_bind_group);
+
+        state.render_submission.clear();
     
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
