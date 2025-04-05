@@ -52,7 +52,7 @@ impl MyCamera {
 impl Default for MyCamera {
     fn default() -> Self {
         MyCamera {
-            pos: cgmath::Point3::new(0.0, 0.0, 5.0),
+            pos: cgmath::Point3::new(0.0, 0.0, 10.0),
             yaw: -90.0,
             pitch: 0.0,
             fovy: 45.0,

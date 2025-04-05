@@ -1,6 +1,6 @@
 use std::{collections::{HashMap, VecDeque}, io::Cursor, sync::Arc};
 
-use image::{DynamicImage, ImageBuffer, ImageReader};
+use image::{imageops::flip_vertical, DynamicImage, ImageBuffer, ImageReader};
 use russimp::{material::{DataContent, Material, PropertyTypeInfo, Texture, TextureType}, scene::{PostProcess, Scene}};
 use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout};
 
@@ -69,6 +69,7 @@ impl ModelMeta {
                     ImageBuffer::from_raw(diffuse_texture.width, diffuse_texture.height, data.clone()).unwrap()
                 }
             };
+            let diffuse_image = flip_vertical(&diffuse_image);
             // to do
             let material_bind_group = opaque_pipeline.create_material_bind_group(
                 device,
@@ -77,6 +78,8 @@ impl ModelMeta {
             );
             Arc::new(material_bind_group)
         }
+
+        println!("Number of meshes: {}", root.meshes.len());
         for mesh in root.meshes.iter(){
             let mesh = scene.meshes.get(*mesh as usize).unwrap();
             let material = scene.materials.get(mesh.material_index as usize).unwrap();

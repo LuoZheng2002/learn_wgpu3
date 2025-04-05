@@ -46,8 +46,9 @@ impl State {
         assert!(delta_time >= 0.0);
         *prev_time = current_time;
         let model_meta = ModelMeta {
-            path: "assets/cube.glb".to_string(),
+            path: "assets/rabbit2.glb".to_string(),
         };
+        let scale = 1.0;
         let instance1 = ModelInstance {
             position: [0.0, 0.0, 0.0].into(),
             rotation: Quaternion::from(Euler::new(
@@ -55,6 +56,7 @@ impl State {
                 cgmath::Rad(current_time),
                 cgmath::Rad(current_time),
             )),
+            scale: cgmath::Vector3::new(scale, scale, scale),
         };
         let instance2 = ModelInstance {
             position: [1.0, 0.0, 0.5].into(),
@@ -63,6 +65,7 @@ impl State {
                 cgmath::Rad(current_time),
                 cgmath::Rad(-current_time),
             )),
+            scale: cgmath::Vector3::new(scale, scale, scale),
         };
         self.submit_renderable(model_meta.clone(), Arc::new(instance1));
         self.submit_renderable(model_meta.clone(), Arc::new(instance2));
