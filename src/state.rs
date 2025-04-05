@@ -1,10 +1,10 @@
-use std::{collections::HashMap, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use cgmath::{Euler, Quaternion};
 
 use crate::{
-    mesh_meta::MeshMeta, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera,
-    opaque_mesh_instance::OpaqueMeshInstance, render_context::RenderContext,
+    model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera,
+    render_context::RenderContext,
 };
 
 // model path,
@@ -17,12 +17,12 @@ pub struct State {
     pub prev_time: Option<f32>,
     pub fps_timer: Option<Instant>,
     pub accumulated_frame_num: u32,
-    pub render_submission: HashMap<ModelMeta, Vec<ModelInstance>>,
+    pub render_submissions: HashMap<ModelMeta, Vec<Arc<ModelInstance>>>,
 }
 
 impl State {
-    fn submit_renderable(&mut self, model_meta: ModelMeta, instance: ModelInstance) {
-        self.render_submission
+    fn submit_renderable(&mut self, model_meta: ModelMeta, instance: Arc<ModelInstance>) {
+        self.render_submissions
             .entry(model_meta)
             .or_insert_with(|| Vec::new())
             .push(instance);
@@ -46,7 +46,7 @@ impl State {
         assert!(delta_time >= 0.0);
         *prev_time = current_time;
         let model_meta = ModelMeta {
-            path: "assets/mesh.obj".to_string(),
+            path: "assets/cube.glb".to_string(),
         };
         let instance1 = ModelInstance {
             position: [0.0, 0.0, 0.0].into(),
@@ -64,8 +64,8 @@ impl State {
                 cgmath::Rad(-current_time),
             )),
         };
-        self.submit_renderable(model_meta.clone(), instance1);
-        self.submit_renderable(model_meta.clone(), instance2);
+        self.submit_renderable(model_meta.clone(), Arc::new(instance1));
+        self.submit_renderable(model_meta.clone(), Arc::new(instance2));
     }
 }
 
@@ -77,7 +77,7 @@ impl Default for State {
             prev_time: None,
             fps_timer: None,
             accumulated_frame_num: 0,
-            render_submission: HashMap::new(),
+            render_submissions: HashMap::new(),
         }
     }
 }

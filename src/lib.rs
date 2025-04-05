@@ -1,14 +1,11 @@
 pub mod app;
 pub mod cache;
 pub mod camera_uniform;
-pub mod mesh_meta;
 pub mod model_data;
 pub mod model_instance;
 pub mod model_meta;
 pub mod my_camera;
 pub mod my_texture;
-pub mod opaque_mesh_data;
-pub mod opaque_mesh_instance;
 pub mod opaque_pipeline;
 pub mod render_context;
 pub mod state;

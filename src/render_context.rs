@@ -5,14 +5,7 @@ use wgpu::{util::DeviceExt, CompositeAlphaMode};
 use winit::window::Window;
 
 use crate::{
-    cache::{CACHE, CacheKey, CacheValue},
-    camera_uniform::CameraUniform,
-    mesh_meta::MeshMeta,
-    model_data::{self, ModelData},
-    my_texture::MyTexture,
-    opaque_mesh_instance::OpaqueMeshInstance,
-    opaque_pipeline::{self, OpaquePipeline},
-    state::State,
+    cache::{CacheKey, CacheValue, CACHE}, camera_uniform::CameraUniform, model_data::{self, MeshMeta, ModelData, MyMesh}, model_instance::ModelInstance, my_texture::MyTexture, opaque_pipeline::{self, OpaquePipeline}, state::State
 };
 
 pub struct RenderContext {
@@ -162,33 +155,25 @@ impl RenderContext {
                 label: Some("Render Encoder"),
             });
         // convert model instances to mesh instances
-        let mut opaque_meshes = HashMap::<MeshMeta, Vec<OpaqueMeshInstance>>::new();
-        for (model_meta, instances) in state.render_submission.iter() {
+        let mut opaque_meshes = Vec::<(Arc<MyMesh>, Vec<Arc<ModelInstance>>)>::new();
+        for (model_meta, instances) in state.render_submissions.iter() {
             // need to get the model info to determine which meshes are opaque
             let model_data = CACHE.get_with(CacheKey::ModelMeta(model_meta.clone()), || {
-                // temp:
-                let model_data = model_meta.load_model();
+                let model_data = model_meta.load_model(
+                    &self.device,
+                    &self.queue,
+                    &self.opaque_pipeline,
+                );
                 Arc::new(CacheValue::ModelData(model_data))
             });
-            let model_info = match model_data.as_ref() {
+            let model_data = match model_data.as_ref() {
                 CacheValue::ModelData(model_info) => model_info,
                 _ => unreachable!(),
             };
-            let mesh_instances = instances
-                .iter()
-                .map(|instance| OpaqueMeshInstance {
-                    position: instance.position,
-                    rotation: instance.rotation,
-                })
-                .collect::<Vec<_>>();
-            // temp
-            opaque_meshes.insert(
-                MeshMeta {
-                    file_path: model_meta.path.clone(),
-                    mesh_index: 0,
-                },
-                mesh_instances,
-            );
+            for opaque_mesh in model_data.opaque_meshes.iter() {
+                
+                opaque_meshes.push((opaque_mesh.clone(), instances.clone()));
+            }
         }
 
         self.opaque_pipeline.render(
@@ -201,7 +186,7 @@ impl RenderContext {
             &self.camera_bind_group,
         );
 
-        state.render_submission.clear();
+        state.render_submissions.clear();
 
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));

@@ -3,30 +3,26 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use image::{DynamicImage, ImageBuffer, Rgba};
 use russimp::{camera, mesh};
 use wgpu::{RenderPipeline, core::device, util::DeviceExt};
 
 use crate::{
-    cache::{CACHE, CacheKey, CacheValue},
-    mesh_meta::MeshMeta,
-    my_texture::MyTexture,
-    opaque_mesh_data::OpaqueMeshData,
-    opaque_mesh_instance::OpaqueMeshInstance,
-    vertex::Vertex,
+    cache::{CacheKey, CacheValue, CACHE}, model_data::MyMesh, model_instance::{InstanceRaw, ModelInstance}, my_texture::MyTexture, vertex::Vertex
 };
 
 // model
 // mesh_num
 // opauqe mesh, transparent mesh
 pub struct OpaquePipeline {
-    pipeline: RenderPipeline,
-    texture_bind_group_layout: wgpu::BindGroupLayout,
+    pub pipeline: RenderPipeline,
+    pub material_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl OpaquePipeline {
-    fn create_texture_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    fn create_material_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Texture Bind Group Layout"),
+            label: Some("Material Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -45,6 +41,32 @@ impl OpaquePipeline {
                     count: None,
                 },
             ],
+        })
+    }
+    pub fn create_material_bind_group(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        diffuse_image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    )-> wgpu::BindGroup {
+        let diffuse_texture = MyTexture::from_image(
+            diffuse_image,
+            device,            
+            queue,
+        );
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &self.material_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+                },
+            ],
+            label: Some("diffuse_bind_group"),
         })
     }
 
@@ -72,7 +94,7 @@ impl OpaquePipeline {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"), // 1.
-                buffers: &[Vertex::desc(), OpaqueMeshInstance::desc()], // 2.
+                buffers: &[Vertex::desc(), InstanceRaw::desc()], // 2.
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -122,7 +144,7 @@ impl OpaquePipeline {
         config: &wgpu::SurfaceConfiguration,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Self {
-        let texture_bind_group_layout = Self::create_texture_bind_group_layout(device);
+        let texture_bind_group_layout = Self::create_material_bind_group_layout(device);
         let pipeline = Self::create_pipeline(
             device,
             config,
@@ -131,7 +153,7 @@ impl OpaquePipeline {
         );
         Self {
             pipeline,
-            texture_bind_group_layout,
+            material_bind_group_layout: texture_bind_group_layout,
         }
     }
 
@@ -174,7 +196,7 @@ impl OpaquePipeline {
 
     pub fn render(
         &mut self,
-        renderables: &HashMap<MeshMeta, Vec<OpaqueMeshInstance>>,
+        renderables: &Vec<(Arc<MyMesh>, Vec<Arc<ModelInstance>>)>,
         encoder: &mut wgpu::CommandEncoder,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -185,27 +207,17 @@ impl OpaquePipeline {
         // begin render pass
         let mut render_pass = self.create_render_pass(encoder, color_view, depth_view);
 
-        for (mesh_meta, instances) in renderables.iter() {
-            let mesh_model = CACHE.get_with(CacheKey::OpaqueMeshMeta(mesh_meta.clone()), || {
-                let opaque_mesh_model =
-                    OpaqueMeshData::new(device, queue, &self.texture_bind_group_layout);
-                Arc::new(CacheValue::OpaqueMeshModel(opaque_mesh_model))
-            });
-            let mesh_model = match mesh_model.as_ref() {
-                CacheValue::OpaqueMeshModel(mesh_model) => mesh_model,
-                _ => unreachable!(),
-            };
+        for (mesh, instances) in renderables.iter() {
             render_pass.set_pipeline(&self.pipeline);
-
             //needs a texture bind group from the model
             render_pass.set_bind_group(0, camera_bind_group, &[]);
-            render_pass.set_bind_group(1, &mesh_model.texture_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, mesh_model.vertex_buffer.slice(..));
+            render_pass.set_bind_group(1, mesh.material_bind_group.as_ref(), &[]);
+            render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
             render_pass
-                .set_index_buffer(mesh_model.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             let instance_data = instances
                 .iter()
-                .map(OpaqueMeshInstance::to_raw)
+                .map(|instance|instance.as_ref().to_raw())
                 .collect::<Vec<_>>();
             let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Instance Buffer"),
@@ -213,7 +225,7 @@ impl OpaquePipeline {
                 usage: wgpu::BufferUsages::VERTEX,
             });
             render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
-            render_pass.draw_indexed(0..mesh_model.num_indices, 0, 0..instances.len() as u32);
+            render_pass.draw_indexed(0..mesh.num_indices, 0, 0..instances.len() as u32);
         }
     }
 }

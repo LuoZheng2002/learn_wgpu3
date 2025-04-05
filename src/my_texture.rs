@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use image::{GenericImageView, Rgba};
+use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
 use lazy_static::lazy_static;
 use rusttype::{Font, point};
 
@@ -52,27 +52,22 @@ impl MyTexture {
         });
         image::imageops::flip_vertical(&image)
     }
-    pub fn load(
-        texture_source: TextureSource,
+
+
+
+    pub fn from_image(
+        image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        label: Option<&str>,
-    ) -> Result<Self, image::ImageError> {
-        let img = match texture_source {
-            TextureSource::FilePath(ref file_path) => Self::load_image_from_file_path(file_path)?,
-            TextureSource::TextCharacter {
-                character,
-                font_file_path,
-            } => Self::load_image_from_text_character(character, font_file_path),
-        };
-        let dimensions = img.dimensions();
+    )->Self{
+        let dimensions = image.dimensions();
         let size = wgpu::Extent3d {
             width: dimensions.0,
             height: dimensions.1,
             depth_or_array_layers: 1,
         };
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label,
+            label: Some("Texture"),
             size,
             mip_level_count: 1,
             sample_count: 1,
@@ -89,7 +84,7 @@ impl MyTexture {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            &img,
+            image,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * dimensions.0),
@@ -108,12 +103,26 @@ impl MyTexture {
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
-
-        Ok(Self {
+        Self {
             texture,
             view,
             sampler,
-        })
+        }
+    }
+    pub fn load(
+        texture_source: TextureSource,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<Self, image::ImageError> {
+        let img = match texture_source {
+            TextureSource::FilePath(ref file_path) => Self::load_image_from_file_path(file_path)?,
+            TextureSource::TextCharacter {
+                character,
+                font_file_path,
+            } => Self::load_image_from_text_character(character, font_file_path),
+        };
+        let my_texture = Self::from_image(&img, device, queue);
+        Ok(my_texture)
     }
 
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float; // 1.

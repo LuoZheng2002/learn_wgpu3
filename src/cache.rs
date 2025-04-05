@@ -4,20 +4,17 @@ use lazy_static::lazy_static;
 use moka::sync::Cache;
 
 use crate::{
-    mesh_meta::MeshMeta, model_data::ModelData, model_meta::ModelMeta,
-    opaque_mesh_data::OpaqueMeshData,
+    model_data::ModelData, model_meta::ModelMeta,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CacheKey {
     ModelMeta(ModelMeta),
-    OpaqueMeshMeta(MeshMeta),
     Placeholder,
 }
 
 pub enum CacheValue {
     ModelData(ModelData),
-    OpaqueMeshModel(OpaqueMeshData),
     Placeholder,
 }
 

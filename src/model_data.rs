@@ -5,33 +5,36 @@ use russimp::{
     material::{Material, TextureType},
     scene::Scene,
 };
+use wgpu::BindGroup;
 
-use crate::my_texture::MyTexture;
+use crate::{model_meta::ModelMeta, my_texture::MyTexture};
 
 #[derive(Debug, Clone)]
 pub struct MyMesh {
-    pub normals: Vec<cgmath::Vector3<f32>>,
-    pub name: String,
-    pub vertices: Vec<cgmath::Vector3<f32>>,
-    pub material: Arc<MyMaterial>,
-    pub transformation: cgmath::Matrix4<f32>,
-    pub texture_coords: HashMap<TextureType, Vec<cgmath::Vector3<f32>>>,
-    pub indices: Vec<u32>,
-    pub colors: HashMap<TextureType, Vec<cgmath::Vector4<f32>>>,
+    pub vertex_buffer: wgpu::Buffer,
+    pub index_buffer: wgpu::Buffer,
+    pub num_indices: u32,
+    pub material_bind_group: Arc<BindGroup>,
 }
 
 #[derive(Debug, Clone)]
-pub struct MyMaterial {
-    pub color_diffuse: cgmath::Vector4<f32>,
-    pub textures: HashMap<TextureType, Arc<MyTexture>>,
-    pub metallic: f32,
-    pub roughness: f32,
-    pub shininess: f32,
-    pub emmisive: cgmath::Vector4<f32>,
-    pub opacity: f32,
+pub struct MaterialBindGroup(BindGroup);
+    // pub color_diffuse: cgmath::Vector4<f32>,
+    // pub textures: HashMap<TextureType, Arc<MyTexture>>,
+    // pub metallic: f32,
+    // pub roughness: f32,
+    // pub shininess: f32,
+    // pub emmisive: cgmath::Vector4<f32>,
+    // pub opacity: f32,
+
+// This is a key to a mesh to be rendered
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct MeshMeta{
+    pub model_meta: ModelMeta,
+    pub mesh_index: usize,
 }
 
 pub struct ModelData {
-    pub opaque_meshes: Vec<MyMesh>,
+    pub opaque_meshes: Vec<Arc<MyMesh>>,
     pub transparent_meshes: Vec<Arc<MyMesh>>,
 }
