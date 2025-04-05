@@ -17,6 +17,8 @@ use crate::{
 pub struct OpaquePipeline {
     pub pipeline: RenderPipeline,
     pub material_bind_group_layout: wgpu::BindGroupLayout,
+    pub light_bind_group_layout: wgpu::BindGroupLayout,
+    pub light_bind_group: wgpu::BindGroup,
 }
 
 impl OpaquePipeline {
@@ -70,16 +72,50 @@ impl OpaquePipeline {
         })
     }
 
+    pub fn create_light_bind_group_layout(
+        device: &wgpu::Device,
+    ) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: None,
+        })
+    }
+
+    pub fn create_light_bind_group(
+        device: &wgpu::Device,
+        light_buffer: &wgpu::Buffer,
+        light_bind_group_layout: &wgpu::BindGroupLayout
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: light_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: light_buffer.as_entire_binding(),
+            }],
+            label: None,
+        })
+    }
+
     fn create_pipeline(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
-        texture_bind_group_layout: &wgpu::BindGroupLayout,
+        material_bind_group_layout: &wgpu::BindGroupLayout,
+        light_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> RenderPipeline {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&camera_bind_group_layout, texture_bind_group_layout],
+                bind_group_layouts: &[camera_bind_group_layout, material_bind_group_layout, light_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -143,17 +179,27 @@ impl OpaquePipeline {
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
+        light_buffer: &wgpu::Buffer,
     ) -> Self {
-        let texture_bind_group_layout = Self::create_material_bind_group_layout(device);
+        let material_bind_group_layout = Self::create_material_bind_group_layout(device);
+        let light_bind_group_layout = Self::create_light_bind_group_layout(device);
         let pipeline = Self::create_pipeline(
             device,
             config,
             camera_bind_group_layout,
-            &texture_bind_group_layout,
+            &material_bind_group_layout,
+            &light_bind_group_layout,
+        );
+        let light_bind_group = Self::create_light_bind_group(
+            device, 
+            light_buffer, 
+            &light_bind_group_layout
         );
         Self {
             pipeline,
-            material_bind_group_layout: texture_bind_group_layout,
+            material_bind_group_layout,
+            light_bind_group_layout,
+            light_bind_group,
         }
     }
 
@@ -206,11 +252,11 @@ impl OpaquePipeline {
     ) {
         // begin render pass
         let mut render_pass = self.create_render_pass(encoder, color_view, depth_view);
-
+        render_pass.set_pipeline(&self.pipeline);
+        //needs a texture bind group from the model
+        render_pass.set_bind_group(0, camera_bind_group, &[]);
+        render_pass.set_bind_group(2, &self.light_bind_group, &[]);
         for (mesh, instances) in renderables.iter() {
-            render_pass.set_pipeline(&self.pipeline);
-            //needs a texture bind group from the model
-            render_pass.set_bind_group(0, camera_bind_group, &[]);
             render_pass.set_bind_group(1, mesh.material_bind_group.as_ref(), &[]);
             render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
             render_pass

@@ -5,7 +5,7 @@ use wgpu::{util::DeviceExt, CompositeAlphaMode};
 use winit::window::Window;
 
 use crate::{
-    cache::{CacheKey, CacheValue, CACHE}, camera_uniform::CameraUniform, model_data::{self, MeshMeta, ModelData, MyMesh}, model_instance::ModelInstance, my_texture::MyTexture, opaque_pipeline::{self, OpaquePipeline}, state::State
+    cache::{CacheKey, CacheValue, CACHE}, camera_uniform::CameraUniform, light_uniform::LightUniform, model_data::{self, MeshMeta, ModelData, MyMesh}, model_instance::ModelInstance, my_texture::MyTexture, opaque_pipeline::{self, OpaquePipeline}, state::State
 };
 
 pub struct RenderContext {
@@ -19,6 +19,8 @@ pub struct RenderContext {
     // most pipelines will use this
     pub camera_bind_group_layout: wgpu::BindGroupLayout,
     pub camera_bind_group: wgpu::BindGroup,
+    // light stuff
+    pub light_buffer: wgpu::Buffer,
     pub depth_texture: MyTexture,
 
     pub opaque_pipeline: OpaquePipeline,
@@ -94,7 +96,7 @@ impl RenderContext {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -112,7 +114,20 @@ impl RenderContext {
             }],
             label: Some("camera_bind_group"),
         });
-        let opaque_pipeline = OpaquePipeline::new(&device, &config, &camera_bind_group_layout);
+        let light_uniform = LightUniform {
+            position: [2.0, 2.0, 2.0],
+            _padding: 0,
+            color: [1.0, 1.0, 1.0],
+            _padding2: 0,
+        };
+        let light_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Light VB"),
+                contents: bytemuck::cast_slice(&[light_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
+        let opaque_pipeline = OpaquePipeline::new(&device, &config, &camera_bind_group_layout, &light_buffer);
         RenderContext {
             surface,
             device,
@@ -124,6 +139,7 @@ impl RenderContext {
             camera_bind_group_layout,
             camera_bind_group,
             depth_texture,
+            light_buffer,
         }
     }
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -147,6 +163,18 @@ impl RenderContext {
             &self.camera_buffer,
             0,
             bytemuck::cast_slice(&[camera_uniform]),
+        );
+        // update light transform
+        let light_uniform = LightUniform {
+            position: state.light_position.into(),
+            _padding: 0,
+            color: [1.0, 1.0, 1.0],
+            _padding2: 0,
+        };
+        self.queue.write_buffer(
+            &self.light_buffer,
+            0,
+            bytemuck::cast_slice(&[light_uniform]),
         );
 
         let mut encoder = self

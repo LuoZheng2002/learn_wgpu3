@@ -10,3 +10,4 @@ pub mod opaque_pipeline;
 pub mod render_context;
 pub mod state;
 pub mod vertex;
+pub mod light_uniform;

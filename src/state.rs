@@ -18,6 +18,7 @@ pub struct State {
     pub fps_timer: Option<Instant>,
     pub accumulated_frame_num: u32,
     pub render_submissions: HashMap<ModelMeta, Vec<Arc<ModelInstance>>>,
+    pub light_position: cgmath::Vector3<f32>,
 }
 
 impl State {
@@ -48,22 +49,34 @@ impl State {
         let model_meta = ModelMeta {
             path: "assets/rabbit2.glb".to_string(),
         };
+
+
+        // rotate light in a unit circle
+        let light_radius = 5.0;
+        let light_angle = current_time * 0.5;
+        self.light_position.x = light_radius * light_angle.cos();
+        self.light_position.z = light_radius * light_angle.sin();
+
+
+
         let scale = 1.0;
+        let speed = 0.0;
+        let delta_angle = current_time * speed;
         let instance1 = ModelInstance {
-            position: [0.0, 0.0, 0.0].into(),
+            position: [-1.0, 0.0, 0.0].into(),
             rotation: Quaternion::from(Euler::new(
-                cgmath::Rad(current_time),
-                cgmath::Rad(current_time),
-                cgmath::Rad(current_time),
+                cgmath::Rad(delta_angle),
+                cgmath::Rad(delta_angle),
+                cgmath::Rad(delta_angle),
             )),
             scale: cgmath::Vector3::new(scale, scale, scale),
         };
         let instance2 = ModelInstance {
-            position: [1.0, 0.0, 0.5].into(),
+            position: [1.0, 0.0, 0.0].into(),
             rotation: Quaternion::from(Euler::new(
-                cgmath::Rad(-current_time),
-                cgmath::Rad(current_time),
-                cgmath::Rad(-current_time),
+                cgmath::Rad(-delta_angle),
+                cgmath::Rad(delta_angle),
+                cgmath::Rad(-delta_angle),
             )),
             scale: cgmath::Vector3::new(scale, scale, scale),
         };
@@ -81,6 +94,7 @@ impl Default for State {
             fps_timer: None,
             accumulated_frame_num: 0,
             render_submissions: HashMap::new(),
+            light_position: cgmath::Vector3::new(0.0, 0.0, 0.0),
         }
     }
 }

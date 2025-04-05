@@ -113,9 +113,11 @@ impl ModelMeta {
             for i in 0..mesh.vertices.len(){
                 let vertex = mesh.vertices[i];
                 let tex_coord = tex_coords[i];
+                let normal = mesh.normals[i];
                 vertices.push(Vertex{
                     position: [vertex.x, vertex.y, vertex.z],
                     tex_coords: [tex_coord.x, tex_coord.y],
+                    normal: [normal.x, normal.y, normal.z],
                 });
             }
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

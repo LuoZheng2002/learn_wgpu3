@@ -9,6 +9,7 @@ pub struct CameraUniform {
     // to convert the Matrix4 into a 4x4 f32 array
     view: [[f32; 4]; 4],
     proj: [[f32; 4]; 4],
+    camera_pos: [f32; 4],
 }
 
 impl CameraUniform {
@@ -22,6 +23,12 @@ impl CameraUniform {
         Self {
             view: view.into(),
             proj: camera.build_projection_matrix(aspect).into(),
+            camera_pos: [
+                camera.pos.x,
+                camera.pos.y,
+                camera.pos.z,
+                1.0,
+            ],
         }
     }
 }
