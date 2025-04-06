@@ -1,11 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use tokio::runtime::Runtime;
 use wgpu::{util::DeviceExt, CompositeAlphaMode};
 use winit::window::Window;
 
 use crate::{
-    cache::{CacheKey, CacheValue, CACHE}, camera_uniform::CameraUniform, light_uniform::LightUniform, model_data::{self, MeshMeta, ModelData, MyMesh}, model_instance::ModelInstance, my_texture::MyTexture, opaque_pipeline::{self, OpaquePipeline}, state::State
+    cache::{CacheKey, CacheValue, CACHE}, camera_uniform::CameraUniform, light_uniform::LightUniform, model_data::{self, MeshMeta, ModelData, MyMesh}, model_instance::ModelInstance, my_texture::MyTexture, opaque_pipeline::{self, OpaquePipeline}, state::State, ui_pipeline::UIPipeline
 };
 
 pub struct RenderContext {
@@ -24,6 +24,8 @@ pub struct RenderContext {
     pub depth_texture: MyTexture,
 
     pub opaque_pipeline: OpaquePipeline,
+    pub ui_pipeline: UIPipeline,
+    pub ui_index_buffer: wgpu::Buffer,
 }
 
 impl RenderContext {
@@ -128,18 +130,22 @@ impl RenderContext {
             }
         );
         let opaque_pipeline = OpaquePipeline::new(&device, &config, &camera_bind_group_layout, &light_buffer);
+        let ui_pipeline = UIPipeline::new(&device, &config );
+        let ui_index_buffer = UIPipeline::create_index_buffer(&device);
         RenderContext {
             surface,
             device,
             queue,
             config,
-            size,
-            opaque_pipeline,
+            size,            
             camera_buffer,
             camera_bind_group_layout,
             camera_bind_group,
             depth_texture,
             light_buffer,
+            opaque_pipeline,
+            ui_pipeline,
+            ui_index_buffer,
         }
     }
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -183,8 +189,15 @@ impl RenderContext {
                 label: Some("Render Encoder"),
             });
         // convert model instances to mesh instances
-        let mut opaque_meshes = Vec::<(Arc<MyMesh>, Vec<Arc<ModelInstance>>)>::new();
-        for (model_meta, instances) in state.render_submissions.iter() {
+        let model_render_submissions = mem::take(&mut state.model_render_submissions);
+        let model_render_submissions = model_render_submissions
+            .into_iter()
+            .map(|(model_meta, instances)| {
+                (model_meta, Arc::new(instances))
+            })
+            .collect::<HashMap<_, _>>();
+        let mut opaque_meshes = Vec::<(Arc<MyMesh>, Arc<Vec<ModelInstance>>)>::new();
+        for (model_meta, instances) in model_render_submissions.iter() {
             // need to get the model info to determine which meshes are opaque
             let model_data = CACHE.get_with(CacheKey::ModelMeta(model_meta.clone()), || {
                 let model_data = model_meta.load_model(
@@ -199,11 +212,9 @@ impl RenderContext {
                 _ => unreachable!(),
             };
             for opaque_mesh in model_data.opaque_meshes.iter() {
-                
                 opaque_meshes.push((opaque_mesh.clone(), instances.clone()));
             }
         }
-
         self.opaque_pipeline.render(
             &opaque_meshes,
             &mut encoder,
@@ -213,8 +224,60 @@ impl RenderContext {
             &self.depth_texture.view,
             &self.camera_bind_group,
         );
+        let ui_render_submissions = mem::take(&mut state.ui_render_submissions);
+        let ui_render_submissions = ui_render_submissions
+            .into_iter()
+            .map(|(ui_meta, instances)| {
+                (ui_meta, Arc::new(instances))
+            })
+            .collect::<HashMap<_, _>>();
 
-        state.render_submissions.clear();
+        let ui_renderables = ui_render_submissions
+            .iter()
+            .map(|(ui_meta, instances)| {
+                let ui_renderable = CACHE.get_with(
+                    CacheKey::UIRenderableMeta(ui_meta.clone()),
+                    || {
+                        let ui_renderable = ui_meta.to_ui_renderable(
+                            &self.device,
+                            &self.queue,
+                            &self.ui_pipeline,
+                        );
+                        Arc::new(CacheValue::UIRenderable(ui_renderable))
+                    },
+                );
+                (
+                    ui_renderable,
+                    instances.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let ui_renderables = ui_renderables
+            .iter()
+            .map(|(ui_meta, instances)| {
+                let ui_renderable = match ui_meta.as_ref() {
+                    CacheValue::UIRenderable(ui_renderable) => ui_renderable,
+                    _ => unreachable!(),
+                };
+                (ui_renderable, instances.clone())
+            })
+            .collect::<Vec<_>>();
+        let max_ui_sort_order = state.max_ui_sort_order.expect("forget to set max ui sort order");
+        let norm_factor = (max_ui_sort_order + 2) as f32;
+        self.ui_pipeline.render(            
+            &ui_renderables,
+            norm_factor,
+            &mut encoder,
+            &self.device,
+            &self.queue,
+            &view,
+            &self.depth_texture.view,
+            &self.ui_index_buffer,
+        );
+
+        state.model_render_submissions.clear();
+        state.ui_render_submissions.clear();
+        state.max_ui_sort_order = None;
 
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));

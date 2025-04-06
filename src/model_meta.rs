@@ -55,7 +55,6 @@ impl ModelMeta {
                 _ => panic!("Unsupported texture type"),
             };
             let diffuse_image = match diffuse_texture.height{
-                
                 0=>{
                     
                     ImageReader::new(Cursor::new(data))
@@ -69,7 +68,7 @@ impl ModelMeta {
                     ImageBuffer::from_raw(diffuse_texture.width, diffuse_texture.height, data.clone()).unwrap()
                 }
             };
-            let diffuse_image = flip_vertical(&diffuse_image);
+            // let diffuse_image = flip_vertical(&diffuse_image);
             // to do
             let material_bind_group = opaque_pipeline.create_material_bind_group(
                 device,

@@ -47,10 +47,10 @@ impl MyTexture {
         let height = bounding_box.height() as u32;
         let mut image = image::ImageBuffer::new(width, height);
         glyph.draw(|x, y, v| {
-            let intensity = (v * 128.0) as u8;
-            image.put_pixel(x, y, Rgba([255, 255, 255, intensity]));
+            let intensity = (v * 255.0) as u8;
+            image.put_pixel(x, y, Rgba([intensity, 0, intensity, 255]));
         });
-        image::imageops::flip_vertical(&image)
+        image
     }
 
 
@@ -60,6 +60,7 @@ impl MyTexture {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     )->Self{
+        let image = image::imageops::flip_vertical(image);
         let dimensions = image.dimensions();
         let size = wgpu::Extent3d {
             width: dimensions.0,
@@ -84,7 +85,7 @@ impl MyTexture {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            image,
+            &image,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * dimensions.0),

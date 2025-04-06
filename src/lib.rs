@@ -11,3 +11,6 @@ pub mod render_context;
 pub mod state;
 pub mod vertex;
 pub mod light_uniform;
+pub mod ui_canvas;
+pub mod ui_pipeline;
+pub mod ui_renderable;

@@ -4,17 +4,22 @@ use lazy_static::lazy_static;
 use moka::sync::Cache;
 
 use crate::{
-    model_data::ModelData, model_meta::ModelMeta,
+    model_data::ModelData, model_meta::ModelMeta, my_texture::{MyTexture, TextureSource}, ui_renderable::{UIRenderable, UIRenderableMeta},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CacheKey {
     ModelMeta(ModelMeta),
+    UIRenderableMeta(UIRenderableMeta),
+    Texture(TextureSource),
+    PlaceholderTexture,
     Placeholder,
 }
 
 pub enum CacheValue {
     ModelData(ModelData),
+    UIRenderable(UIRenderable),
+    Texture(MyTexture),
     Placeholder,
 }
 

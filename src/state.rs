@@ -4,7 +4,7 @@ use cgmath::{Euler, Quaternion};
 
 use crate::{
     model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera,
-    render_context::RenderContext,
+    render_context::RenderContext, ui_renderable::{UIInstance, UIRenderableMeta},
 };
 
 // model path,
@@ -17,16 +17,30 @@ pub struct State {
     pub prev_time: Option<f32>,
     pub fps_timer: Option<Instant>,
     pub accumulated_frame_num: u32,
-    pub render_submissions: HashMap<ModelMeta, Vec<Arc<ModelInstance>>>,
+    pub model_render_submissions: HashMap<ModelMeta, Vec<ModelInstance>>,
+    // use Arc here because we need to map the container to another container
+    pub ui_render_submissions: HashMap<UIRenderableMeta, Vec<UIInstance>>,
+    pub max_ui_sort_order: Option<u32>,
     pub light_position: cgmath::Vector3<f32>,
 }
 
 impl State {
-    fn submit_renderable(&mut self, model_meta: ModelMeta, instance: Arc<ModelInstance>) {
-        self.render_submissions
+    fn submit_renderable(&mut self, model_meta: ModelMeta, instance: ModelInstance) {
+        self.model_render_submissions
             .entry(model_meta)
             .or_insert_with(|| Vec::new())
             .push(instance);
+    }
+    fn submit_ui_renderable(&mut self, ui_meta: UIRenderableMeta, instance: UIInstance) {
+        let new_order = instance.sort_order;
+        self.ui_render_submissions
+            .entry(ui_meta)
+            .or_insert_with(|| Vec::new())
+            .push(instance);
+        let order = self.max_ui_sort_order.get_or_insert(0);
+        if new_order > *order {
+            *order = new_order;
+        }
     }
 
     pub fn update(&mut self) {
@@ -80,8 +94,18 @@ impl State {
             )),
             scale: cgmath::Vector3::new(scale, scale, scale),
         };
-        self.submit_renderable(model_meta.clone(), Arc::new(instance1));
-        self.submit_renderable(model_meta.clone(), Arc::new(instance2));
+        self.submit_renderable(model_meta.clone(), instance1);
+        self.submit_renderable(model_meta.clone(), instance2);
+
+        let ui_meta1 = UIRenderableMeta::Font { character: 'F' };
+        let ui_instance1 = UIInstance {
+            color: cgmath::Vector4::new(1.0, 0.0, 1.0, 1.0),
+            location: [-0.2, 0.9, 0.7, -0.1],
+            sort_order: 0,
+            use_texture: true,
+        };
+        self.submit_ui_renderable(ui_meta1, ui_instance1);
+        self.max_ui_sort_order.get_or_insert(0);
     }
 }
 
@@ -93,8 +117,10 @@ impl Default for State {
             prev_time: None,
             fps_timer: None,
             accumulated_frame_num: 0,
-            render_submissions: HashMap::new(),
+            model_render_submissions: HashMap::new(),
+            ui_render_submissions: HashMap::new(),
             light_position: cgmath::Vector3::new(0.0, 0.0, 0.0),
+            max_ui_sort_order: None,
         }
     }
 }
