@@ -3,8 +3,11 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use cgmath::{Euler, Quaternion};
 
 use crate::{
-    model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera,
-    render_context::RenderContext, ui_renderable::{UIInstance, UIRenderableMeta},
+    model_instance::ModelInstance,
+    model_meta::ModelMeta,
+    my_camera::MyCamera,
+    render_context::RenderContext,
+    ui_renderable::{UIInstance, UIRenderableMeta},
 };
 
 // model path,
@@ -64,14 +67,11 @@ impl State {
             path: "assets/rabbit2.glb".to_string(),
         };
 
-
         // rotate light in a unit circle
         let light_radius = 5.0;
         let light_angle = current_time * 0.5;
         self.light_position.x = light_radius * light_angle.cos();
         self.light_position.z = light_radius * light_angle.sin();
-
-
 
         let scale = 1.0;
         let speed = 0.0;

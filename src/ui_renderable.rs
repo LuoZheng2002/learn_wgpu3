@@ -2,9 +2,11 @@ use std::sync::Arc;
 
 use wgpu::{BindGroupLayout, Device};
 
-use crate::{cache::{CacheKey, CacheValue, CACHE}, my_texture::{MyTexture, TextureSource}, ui_pipeline::UIPipeline};
-
-
+use crate::{
+    cache::{CACHE, CacheKey, CacheValue},
+    my_texture::{MyTexture, TextureSource},
+    ui_pipeline::UIPipeline,
+};
 
 // #[repr(C)]
 // #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -22,78 +24,80 @@ use crate::{cache::{CacheKey, CacheValue, CACHE}, my_texture::{MyTexture, Textur
 //     }
 // }
 
-
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum UIRenderableMeta{
+pub enum UIRenderableMeta {
     Color,
-    Texture{path: String},
-    Font{character: char},
+    Texture { path: String },
+    Font { character: char },
 }
 
-impl UIRenderableMeta{
+impl UIRenderableMeta {
     pub fn to_ui_renderable(
         &self,
-        device: &wgpu::Device, 
-        queue: &wgpu::Queue, 
-        ui_pipeline: &UIPipeline
-    )->UIRenderable{
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        ui_pipeline: &UIPipeline,
+    ) -> UIRenderable {
         let font_path = "assets/times.ttf".to_string();
-        let texture: Arc<CacheValue> = match self{
-            UIRenderableMeta::Color =>{
-                CACHE.get_with(CacheKey::PlaceholderTexture, ||{
-                    let texture = MyTexture::load(
-                        TextureSource::FilePath("assets/placeholder.png".to_string()), 
-                        device, 
-                        queue
-                    ).unwrap();
+        let texture: Arc<CacheValue> = match self {
+            UIRenderableMeta::Color => CACHE.get_with(CacheKey::PlaceholderTexture, || {
+                let texture = MyTexture::load(
+                    TextureSource::FilePath("assets/placeholder.png".to_string()),
+                    device,
+                    queue,
+                )
+                .unwrap();
+                Arc::new(CacheValue::Texture(texture))
+            }),
+            UIRenderableMeta::Texture { path } => CACHE.get_with(
+                CacheKey::Texture(TextureSource::FilePath(path.clone())),
+                || {
+                    let texture =
+                        MyTexture::load(TextureSource::FilePath(path.clone()), device, queue)
+                            .unwrap();
                     Arc::new(CacheValue::Texture(texture))
-                })
-            },
-            UIRenderableMeta::Texture { path }=>{
-                CACHE.get_with(CacheKey::Texture(TextureSource::FilePath(path.clone())), ||{
+                },
+            ),
+            UIRenderableMeta::Font { character } => CACHE.get_with(
+                CacheKey::Texture(TextureSource::TextCharacter {
+                    character: *character,
+                    font_file_path: font_path.clone(),
+                }),
+                || {
                     let texture = MyTexture::load(
-                        TextureSource::FilePath(path.clone()), 
-                        device, 
-                        queue
-                    ).unwrap();
+                        TextureSource::TextCharacter {
+                            font_file_path: font_path.clone(),
+                            character: *character,
+                        },
+                        device,
+                        queue,
+                    )
+                    .unwrap();
                     Arc::new(CacheValue::Texture(texture))
-                })
-            },
-            UIRenderableMeta::Font { character }=>{
-                CACHE.get_with(CacheKey::Texture(TextureSource::TextCharacter { character: *character, font_file_path: font_path.clone() }),||{
-                    let texture = MyTexture::load(
-                        TextureSource::TextCharacter{font_file_path: font_path.clone(), character: *character}, 
-                        device, 
-                        queue
-                    ).unwrap();
-                    Arc::new(CacheValue::Texture(texture))
-                })
-            },
+                },
+            ),
         };
-        let texture = match texture.as_ref(){
+        let texture = match texture.as_ref() {
             CacheValue::Texture(texture) => texture,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
-        let material_bind_group = ui_pipeline.create_material_bind_group(
-            device, 
-            queue,
-            texture,
-        );
-        UIRenderable { material_bind_group }
+        let material_bind_group = ui_pipeline.create_material_bind_group(device, queue, texture);
+        UIRenderable {
+            material_bind_group,
+        }
     }
 }
 
-
-pub struct UIInstance{
+pub struct UIInstance {
     pub location: [f32; 4],
     pub color: cgmath::Vector4<f32>,
     pub sort_order: u32,
     pub use_texture: bool,
 }
 
-impl UIInstance{
-    pub fn to_raw(&self, norm_factor: f32) -> UIInstanceRaw{
-        UIInstanceRaw{
+impl UIInstance {
+    pub fn to_raw(&self, norm_factor: f32) -> UIInstanceRaw {
+        UIInstanceRaw {
             color: self.color.into(),
             location: self.location,
             depth: 1.0 - self.sort_order as f32 / norm_factor,
@@ -105,14 +109,14 @@ impl UIInstance{
 // NEW!
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct UIInstanceRaw{
+pub struct UIInstanceRaw {
     pub location: [f32; 4],
-    pub color: [f32; 4],    
+    pub color: [f32; 4],
     pub depth: f32,
     pub use_texture: u32,
 }
 
-impl UIInstanceRaw{
+impl UIInstanceRaw {
     const ATTRIBS: [wgpu::VertexAttribute; 4] =
         wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32, 3 =>Uint32];
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -129,6 +133,6 @@ impl UIInstanceRaw{
     }
 }
 
-pub struct UIRenderable{
-    pub material_bind_group: wgpu::BindGroup
+pub struct UIRenderable {
+    pub material_bind_group: wgpu::BindGroup,
 }

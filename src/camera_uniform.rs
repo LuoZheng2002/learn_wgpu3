@@ -23,12 +23,7 @@ impl CameraUniform {
         Self {
             view: view.into(),
             proj: camera.build_projection_matrix(aspect).into(),
-            camera_pos: [
-                camera.pos.x,
-                camera.pos.y,
-                camera.pos.z,
-                1.0,
-            ],
+            camera_pos: [camera.pos.x, camera.pos.y, camera.pos.z, 1.0],
         }
     }
 }

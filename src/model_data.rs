@@ -19,17 +19,17 @@ pub struct MyMesh {
 
 #[derive(Debug, Clone)]
 pub struct MaterialBindGroup(BindGroup);
-    // pub color_diffuse: cgmath::Vector4<f32>,
-    // pub textures: HashMap<TextureType, Arc<MyTexture>>,
-    // pub metallic: f32,
-    // pub roughness: f32,
-    // pub shininess: f32,
-    // pub emmisive: cgmath::Vector4<f32>,
-    // pub opacity: f32,
+// pub color_diffuse: cgmath::Vector4<f32>,
+// pub textures: HashMap<TextureType, Arc<MyTexture>>,
+// pub metallic: f32,
+// pub roughness: f32,
+// pub shininess: f32,
+// pub emmisive: cgmath::Vector4<f32>,
+// pub opacity: f32,
 
 // This is a key to a mesh to be rendered
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct MeshMeta{
+pub struct MeshMeta {
     pub model_meta: ModelMeta,
     pub mesh_index: usize,
 }

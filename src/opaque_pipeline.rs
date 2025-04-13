@@ -8,7 +8,11 @@ use russimp::{camera, mesh};
 use wgpu::{RenderPipeline, core::device, util::DeviceExt};
 
 use crate::{
-    cache::{CacheKey, CacheValue, CACHE}, model_data::MyMesh, model_instance::{ModelInstanceRaw, ModelInstance}, my_texture::MyTexture, vertex::Vertex
+    cache::{CACHE, CacheKey, CacheValue},
+    model_data::MyMesh,
+    model_instance::{ModelInstance, ModelInstanceRaw},
+    my_texture::MyTexture,
+    vertex::Vertex,
 };
 
 // model
@@ -50,12 +54,8 @@ impl OpaquePipeline {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         diffuse_image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
-    )-> wgpu::BindGroup {
-        let diffuse_texture = MyTexture::from_image(
-            diffuse_image,
-            device,            
-            queue,
-        );
+    ) -> wgpu::BindGroup {
+        let diffuse_texture = MyTexture::from_image(diffuse_image, device, queue);
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &self.material_bind_group_layout,
             entries: &[
@@ -72,9 +72,7 @@ impl OpaquePipeline {
         })
     }
 
-    pub fn create_light_bind_group_layout(
-        device: &wgpu::Device,
-    ) -> wgpu::BindGroupLayout {
+    pub fn create_light_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
@@ -93,7 +91,7 @@ impl OpaquePipeline {
     pub fn create_light_bind_group(
         device: &wgpu::Device,
         light_buffer: &wgpu::Buffer,
-        light_bind_group_layout: &wgpu::BindGroupLayout
+        light_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: light_bind_group_layout,
@@ -115,7 +113,11 @@ impl OpaquePipeline {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[camera_bind_group_layout, material_bind_group_layout, light_bind_group_layout],
+                bind_group_layouts: &[
+                    camera_bind_group_layout,
+                    material_bind_group_layout,
+                    light_bind_group_layout,
+                ],
                 push_constant_ranges: &[],
             });
 
@@ -190,11 +192,8 @@ impl OpaquePipeline {
             &material_bind_group_layout,
             &light_bind_group_layout,
         );
-        let light_bind_group = Self::create_light_bind_group(
-            device, 
-            light_buffer, 
-            &light_bind_group_layout
-        );
+        let light_bind_group =
+            Self::create_light_bind_group(device, light_buffer, &light_bind_group_layout);
         Self {
             pipeline,
             material_bind_group_layout,
@@ -260,11 +259,10 @@ impl OpaquePipeline {
         for (mesh, instances) in renderables.iter() {
             render_pass.set_bind_group(1, mesh.material_bind_group.as_ref(), &[]);
             render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-            render_pass
-                .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             let instance_data = instances
                 .iter()
-                .map(|instance|instance.to_raw())
+                .map(|instance| instance.to_raw())
                 .collect::<Vec<_>>();
             let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Instance Buffer"),

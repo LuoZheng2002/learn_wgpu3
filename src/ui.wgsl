@@ -52,8 +52,16 @@ var s_diffuse: sampler;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (in.use_texture == 1u) {
-        return textureSample(t_diffuse, s_diffuse, in.tex_coords);
+        let color = textureSample(t_diffuse, s_diffuse, in.tex_coords);
+        if (color.a < 0.5){
+            discard;
+        }
+        return color;
     } else {
-        return in.color;
+        let color = in.color;
+        if (color.a < 0.5){
+            discard;
+        }
+        return color;
     }
 }

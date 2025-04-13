@@ -8,7 +8,12 @@ use russimp::{camera, mesh};
 use wgpu::{RenderPipeline, core::device, util::DeviceExt};
 
 use crate::{
-    cache::{CacheKey, CacheValue, CACHE}, model_data::MyMesh, model_instance::{ModelInstance, ModelInstanceRaw}, my_texture::MyTexture, ui_renderable::{UIInstance, UIInstanceRaw, UIRenderable}, vertex::Vertex
+    cache::{CACHE, CacheKey, CacheValue},
+    model_data::MyMesh,
+    model_instance::{ModelInstance, ModelInstanceRaw},
+    my_texture::MyTexture,
+    ui_renderable::{UIInstance, UIInstanceRaw, UIRenderable},
+    vertex::Vertex,
 };
 
 // model
@@ -47,7 +52,7 @@ impl UIPipeline {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         texture: &MyTexture,
-    )-> wgpu::BindGroup {
+    ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &self.material_bind_group_layout,
             entries: &[
@@ -85,7 +90,7 @@ impl UIPipeline {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: Some("vs_main"), // 1.
+                entry_point: Some("vs_main"),      // 1.
                 buffers: &[UIInstanceRaw::desc()], // 2.
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
@@ -131,16 +136,9 @@ impl UIPipeline {
         render_pipeline
     }
 
-    pub fn new(
-        device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
         let material_bind_group_layout = Self::create_material_bind_group_layout(device);
-        let pipeline = Self::create_pipeline(
-            device,
-            config,
-            &material_bind_group_layout,
-        );        
+        let pipeline = Self::create_pipeline(device, config, &material_bind_group_layout);
         Self {
             pipeline,
             material_bind_group_layout,
@@ -179,9 +177,7 @@ impl UIPipeline {
         encoder.begin_render_pass(&render_pass_descriptor)
     }
 
-    pub fn create_index_buffer(
-        device: &wgpu::Device,
-    ) -> wgpu::Buffer {
+    pub fn create_index_buffer(device: &wgpu::Device) -> wgpu::Buffer {
         let indices: [u16; 6] = [0, 1, 2, 3, 4, 5];
         device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
@@ -207,11 +203,10 @@ impl UIPipeline {
         render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         //needs a texture bind group from the model
         for (ui_renderable, instances) in renderables.iter() {
-
             render_pass.set_bind_group(0, &ui_renderable.material_bind_group, &[]);
             let instance_data = instances
                 .iter()
-                .map(|instance|instance.to_raw(norm_factor))
+                .map(|instance| instance.to_raw(norm_factor))
                 .collect::<Vec<_>>();
             let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Instance Buffer"),

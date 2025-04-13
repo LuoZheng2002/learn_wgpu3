@@ -1,10 +1,16 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
 use lazy_static::lazy_static;
 use rusttype::{Font, point};
 
-use crate::render_context;
+use crate::{
+    cache::{CACHE, CacheKey, CacheValue, get_font},
+    render_context,
+};
 
 #[derive(Debug)]
 pub struct MyTexture {
@@ -32,11 +38,11 @@ impl MyTexture {
         character: char,
         font_file_path: String,
     ) -> image::ImageBuffer<Rgba<u8>, Vec<u8>> {
-        let mut fonts = FONTS.lock().unwrap();
-        let font = fonts.entry(font_file_path.clone()).or_insert_with(|| {
-            let font_data = std::fs::read(font_file_path).unwrap();
-            Font::try_from_vec(font_data).unwrap()
-        });
+        let font = get_font(font_file_path);
+        let font = match font.as_ref() {
+            CacheValue::Font(font) => font,
+            _ => panic!("Invalid cache value"),
+        };
         let scale = rusttype::Scale::uniform(1024.0);
         let glyph = font
             .glyph(character)
@@ -48,18 +54,16 @@ impl MyTexture {
         let mut image = image::ImageBuffer::new(width, height);
         glyph.draw(|x, y, v| {
             let intensity = (v * 255.0) as u8;
-            image.put_pixel(x, y, Rgba([intensity, 0, intensity, 255]));
+            image.put_pixel(x, y, Rgba([0, 255, 0, intensity]));
         });
         image
     }
-
-
 
     pub fn from_image(
         image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    )->Self{
+    ) -> Self {
         let image = image::imageops::flip_vertical(image);
         let dimensions = image.dimensions();
         let size = wgpu::Extent3d {

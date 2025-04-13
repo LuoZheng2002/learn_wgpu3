@@ -1,11 +1,19 @@
 use std::{collections::HashMap, mem, sync::Arc};
 
 use tokio::runtime::Runtime;
-use wgpu::{util::DeviceExt, CompositeAlphaMode};
+use wgpu::{CompositeAlphaMode, util::DeviceExt};
 use winit::window::Window;
 
 use crate::{
-    cache::{CacheKey, CacheValue, CACHE}, camera_uniform::CameraUniform, light_uniform::LightUniform, model_data::{self, MeshMeta, ModelData, MyMesh}, model_instance::ModelInstance, my_texture::MyTexture, opaque_pipeline::{self, OpaquePipeline}, state::State, ui_pipeline::UIPipeline
+    cache::{CACHE, CacheKey, CacheValue},
+    camera_uniform::CameraUniform,
+    light_uniform::LightUniform,
+    model_data::{self, MeshMeta, ModelData, MyMesh},
+    model_instance::ModelInstance,
+    my_texture::MyTexture,
+    opaque_pipeline::{self, OpaquePipeline},
+    state::State,
+    ui_pipeline::UIPipeline,
 };
 
 pub struct RenderContext {
@@ -122,22 +130,21 @@ impl RenderContext {
             color: [1.0, 1.0, 1.0],
             _padding2: 0,
         };
-        let light_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Light VB"),
-                contents: bytemuck::cast_slice(&[light_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            }
-        );
-        let opaque_pipeline = OpaquePipeline::new(&device, &config, &camera_bind_group_layout, &light_buffer);
-        let ui_pipeline = UIPipeline::new(&device, &config );
+        let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Light VB"),
+            contents: bytemuck::cast_slice(&[light_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let opaque_pipeline =
+            OpaquePipeline::new(&device, &config, &camera_bind_group_layout, &light_buffer);
+        let ui_pipeline = UIPipeline::new(&device, &config);
         let ui_index_buffer = UIPipeline::create_index_buffer(&device);
         RenderContext {
             surface,
             device,
             queue,
             config,
-            size,            
+            size,
             camera_buffer,
             camera_bind_group_layout,
             camera_bind_group,
@@ -192,19 +199,14 @@ impl RenderContext {
         let model_render_submissions = mem::take(&mut state.model_render_submissions);
         let model_render_submissions = model_render_submissions
             .into_iter()
-            .map(|(model_meta, instances)| {
-                (model_meta, Arc::new(instances))
-            })
+            .map(|(model_meta, instances)| (model_meta, Arc::new(instances)))
             .collect::<HashMap<_, _>>();
         let mut opaque_meshes = Vec::<(Arc<MyMesh>, Arc<Vec<ModelInstance>>)>::new();
         for (model_meta, instances) in model_render_submissions.iter() {
             // need to get the model info to determine which meshes are opaque
             let model_data = CACHE.get_with(CacheKey::ModelMeta(model_meta.clone()), || {
-                let model_data = model_meta.load_model(
-                    &self.device,
-                    &self.queue,
-                    &self.opaque_pipeline,
-                );
+                let model_data =
+                    model_meta.load_model(&self.device, &self.queue, &self.opaque_pipeline);
                 Arc::new(CacheValue::ModelData(model_data))
             });
             let model_data = match model_data.as_ref() {
@@ -227,29 +229,19 @@ impl RenderContext {
         let ui_render_submissions = mem::take(&mut state.ui_render_submissions);
         let ui_render_submissions = ui_render_submissions
             .into_iter()
-            .map(|(ui_meta, instances)| {
-                (ui_meta, Arc::new(instances))
-            })
+            .map(|(ui_meta, instances)| (ui_meta, Arc::new(instances)))
             .collect::<HashMap<_, _>>();
 
         let ui_renderables = ui_render_submissions
             .iter()
             .map(|(ui_meta, instances)| {
-                let ui_renderable = CACHE.get_with(
-                    CacheKey::UIRenderableMeta(ui_meta.clone()),
-                    || {
-                        let ui_renderable = ui_meta.to_ui_renderable(
-                            &self.device,
-                            &self.queue,
-                            &self.ui_pipeline,
-                        );
+                let ui_renderable =
+                    CACHE.get_with(CacheKey::UIRenderableMeta(ui_meta.clone()), || {
+                        let ui_renderable =
+                            ui_meta.to_ui_renderable(&self.device, &self.queue, &self.ui_pipeline);
                         Arc::new(CacheValue::UIRenderable(ui_renderable))
-                    },
-                );
-                (
-                    ui_renderable,
-                    instances.clone(),
-                )
+                    });
+                (ui_renderable, instances.clone())
             })
             .collect::<Vec<_>>();
         let ui_renderables = ui_renderables
@@ -262,9 +254,11 @@ impl RenderContext {
                 (ui_renderable, instances.clone())
             })
             .collect::<Vec<_>>();
-        let max_ui_sort_order = state.max_ui_sort_order.expect("forget to set max ui sort order");
+        let max_ui_sort_order = state
+            .max_ui_sort_order
+            .expect("forget to set max ui sort order");
         let norm_factor = (max_ui_sort_order + 2) as f32;
-        self.ui_pipeline.render(            
+        self.ui_pipeline.render(
             &ui_renderables,
             norm_factor,
             &mut encoder,
