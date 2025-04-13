@@ -1,19 +1,13 @@
 // it contains a RenderPipeline, can store drawables, and render them
 // different pipelines have different binding requirements, so the model types are different
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use image::{DynamicImage, ImageBuffer, Rgba};
-use russimp::{camera, mesh};
-use wgpu::{RenderPipeline, core::device, util::DeviceExt};
+use wgpu::{RenderPipeline, util::DeviceExt};
 
 use crate::{
-    cache::{CACHE, CacheKey, CacheValue},
-    model_data::MyMesh,
-    model_instance::{ModelInstance, ModelInstanceRaw},
     my_texture::MyTexture,
     ui_renderable::{UIInstance, UIInstanceRaw, UIRenderable},
-    vertex::Vertex,
 };
 
 // model

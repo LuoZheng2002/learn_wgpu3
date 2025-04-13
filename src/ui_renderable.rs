@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use wgpu::{BindGroupLayout, Device};
 
 use crate::{
     cache::{CACHE, CacheKey, CacheValue},
@@ -28,7 +27,7 @@ use crate::{
 pub enum UIRenderableMeta {
     Color,
     Texture { path: String },
-    Font { character: char },
+    Font { font_path: String, character: char },
 }
 
 impl UIRenderableMeta {
@@ -38,7 +37,6 @@ impl UIRenderableMeta {
         queue: &wgpu::Queue,
         ui_pipeline: &UIPipeline,
     ) -> UIRenderable {
-        let font_path = "assets/times.ttf".to_string();
         let texture: Arc<CacheValue> = match self {
             UIRenderableMeta::Color => CACHE.get_with(CacheKey::PlaceholderTexture, || {
                 let texture = MyTexture::load(
@@ -58,7 +56,7 @@ impl UIRenderableMeta {
                     Arc::new(CacheValue::Texture(texture))
                 },
             ),
-            UIRenderableMeta::Font { character } => CACHE.get_with(
+            UIRenderableMeta::Font { font_path, character } => CACHE.get_with(
                 CacheKey::Texture(TextureSource::TextCharacter {
                     character: *character,
                     font_file_path: font_path.clone(),
@@ -86,10 +84,17 @@ impl UIRenderableMeta {
             material_bind_group,
         }
     }
+    pub fn uses_texture(&self)-> bool{
+        match self {
+            UIRenderableMeta::Color => false,
+            UIRenderableMeta::Texture { .. } => true,
+            UIRenderableMeta::Font { .. } => true,
+        }
+    }
 }
 
 pub struct UIInstance {
-    pub location: [f32; 4],
+    pub location: [f32; 4], // left, top, right, bottom
     pub color: cgmath::Vector4<f32>,
     pub sort_order: u32,
     pub use_texture: bool,

@@ -1,4 +1,4 @@
-use std::{any::TypeId, sync::Arc};
+use std::sync::Arc;
 
 use lazy_static::lazy_static;
 use moka::sync::Cache;

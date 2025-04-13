@@ -1,13 +1,10 @@
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, time::Instant};
 
 use cgmath::{Euler, Quaternion};
+use winit::window;
 
 use crate::{
-    model_instance::ModelInstance,
-    model_meta::ModelMeta,
-    my_camera::MyCamera,
-    render_context::RenderContext,
-    ui_renderable::{UIInstance, UIRenderableMeta},
+    model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{Text, ToUINode}, ui_renderable::{UIInstance, UIRenderableMeta}
 };
 
 // model path,
@@ -35,6 +32,7 @@ impl State {
             .push(instance);
     }
     fn submit_ui_renderable(&mut self, ui_meta: UIRenderableMeta, instance: UIInstance) {
+        println!("Submitted instance with location: {:?}", instance.location);
         let new_order = instance.sort_order;
         self.ui_render_submissions
             .entry(ui_meta)
@@ -46,7 +44,7 @@ impl State {
         }
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, window_size: &winit::dpi::PhysicalSize<u32>) {
         // calculate fps every 1 second
         let fps_timer = self.fps_timer.get_or_insert_with(|| Instant::now());
         let current_time = fps_timer.elapsed().as_secs_f32();
@@ -97,15 +95,36 @@ impl State {
         self.submit_renderable(model_meta.clone(), instance1);
         self.submit_renderable(model_meta.clone(), instance2);
 
-        let ui_meta1 = UIRenderableMeta::Font { character: 'F' };
-        let ui_instance1 = UIInstance {
-            color: cgmath::Vector4::new(1.0, 0.0, 1.0, 1.0),
-            location: [-0.2, 0.9, 0.7, -0.1],
-            sort_order: 0,
-            use_texture: true,
-        };
-        self.submit_ui_renderable(ui_meta1, ui_instance1);
+        // let ui_meta1 = UIRenderableMeta::Font { character: 'F' };
+        // let ui_instance1 = UIInstance {
+        //     color: cgmath::Vector4::new(1.0, 0.0, 1.0, 1.0),
+        //     location: [-0.2, 0.9, 0.7, -0.1],
+        //     sort_order: 0,
+        //     use_texture: true,
+        // };
+        // self.submit_ui_renderable(ui_meta1, ui_instance1);
+
+        let text = Text::new("你好asdf".to_string(),
+            "assets/KaiTi.ttf".to_string(),
+            50.0,
+            20,
+            cgmath::Vector4 { x: 0.0, y: 0.0, z: 1.0, w: 1.0 }
+            );
+        let ui_node = text.to_ui_node();
+        let ui_renderables = ui_node.to_ui_renderables(
+            0,
+            window_size.width,
+            window_size.height,
+            window_size.width as i32 / 6,
+            window_size.height as i32 / 3,
+        );
+        for (ui_meta, instances) in ui_renderables {
+            for instance in instances {
+                self.submit_ui_renderable(ui_meta.clone(), instance);
+            }
+        }
         self.max_ui_sort_order.get_or_insert(0);
+        // panic!()
     }
 }
 

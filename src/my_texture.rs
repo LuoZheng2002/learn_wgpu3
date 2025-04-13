@@ -1,16 +1,13 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::Mutex,
 };
 
-use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
+use image::{GenericImageView, ImageBuffer, Rgba};
 use lazy_static::lazy_static;
 use rusttype::{Font, point};
 
-use crate::{
-    cache::{CACHE, CacheKey, CacheValue, get_font},
-    render_context,
-};
+use crate::cache::{CacheValue, get_font};
 
 #[derive(Debug)]
 pub struct MyTexture {
@@ -48,7 +45,12 @@ impl MyTexture {
             .glyph(character)
             .scaled(scale)
             .positioned(point(0.0, 0.0));
-        let bounding_box = glyph.pixel_bounding_box().unwrap();
+        let bounding_box = glyph.pixel_bounding_box().unwrap_or(
+            rusttype::Rect {
+                min: point(0, 0),
+                max: point(1, 1),
+            },
+        );
         let width = bounding_box.width() as u32;
         let height = bounding_box.height() as u32;
         let mut image = image::ImageBuffer::new(width, height);

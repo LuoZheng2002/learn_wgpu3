@@ -1,19 +1,19 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     io::Cursor,
     sync::Arc,
 };
 
-use image::{DynamicImage, ImageBuffer, ImageReader, imageops::flip_vertical};
+use image::{ImageBuffer, ImageReader};
 use russimp::{
-    material::{DataContent, Material, PropertyTypeInfo, Texture, TextureType},
+    material::{DataContent, Material, PropertyTypeInfo, TextureType},
     scene::{PostProcess, Scene},
 };
-use wgpu::{BindGroup, BindGroupLayout, util::DeviceExt};
+use wgpu::{BindGroup, util::DeviceExt};
 
 use crate::{
-    model_data::{MaterialBindGroup, ModelData, MyMesh},
-    opaque_pipeline::{self, OpaquePipeline},
+    model_data::{ModelData, MyMesh},
+    opaque_pipeline::{OpaquePipeline},
     vertex::Vertex,
 };
 

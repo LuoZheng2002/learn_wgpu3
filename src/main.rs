@@ -1,22 +1,9 @@
 use learn_wgpu3::app::App;
 use learn_wgpu3::cache::{CacheValue, get_font};
 use learn_wgpu3::ui::{Char, ToUINode};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
+use winit::event_loop::{ControlFlow, EventLoop};
 
 fn main() {
-    let font = get_font("assets/times.ttf".to_string());
-    let font = match font.as_ref() {
-        CacheValue::Font(font) => font,
-        _ => panic!("Invalid cache value"),
-    };
-    let character = Char {
-        font: &font,
-        scale: 1024.0,
-        character: 'g',
-    };
-    let ui_node = character.to_ui_node();
-
     env_logger::init();
 
     let event_loop = EventLoop::new().unwrap();

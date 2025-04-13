@@ -2,11 +2,11 @@
 // layout information
 // an element can have: zero children, one child, or many children
 
-use rusttype::{Font, point};
+use rusttype::{point, Font, Point, Rect};
 
 use crate::{
-    cache::{CacheValue, get_font},
-    ui_node::UINode,
+    cache::{get_font, CacheValue},
+    ui_node::{self, UINode},
     ui_renderable::UIRenderableMeta,
 };
 
@@ -36,21 +36,26 @@ pub struct Text {
     pub font_path: String,
     pub scale: f32,
     pub layout_info: LayoutInfo,
+    pub padding: i32,
+    pub color: cgmath::Vector4<f32>,
 }
 
 impl Text {
-    pub fn new(initial_text: String, font_path: String, scale: f32) -> Self {
+    pub fn new(initial_text: String, font_path: String, scale: f32, padding: i32, color: cgmath::Vector4<f32>) -> Self {
         Self {
             initial_text,
             font_path,
             scale,
             layout_info: LayoutInfo::default(),
+            padding,
+            color,
         }
     }
 }
 
 pub struct Char<'a> {
     pub character: char,
+    pub font_path: String,
     pub font: &'a Font<'static>,
     pub scale: f32,
 }
@@ -62,23 +67,23 @@ impl<'a> ToUINode for Char<'a> {
         // round ascent to the nearest integer
         let ascent = v_metrics.ascent.round() as i32;
         let descent = v_metrics.descent.round() as i32;
+        
         let line_gap = v_metrics.line_gap.round() as i32;
-        let height = ascent - descent + line_gap; // ascent + (abs descent) + line_gap
+        
         let glyph = self.font.glyph(self.character).scaled(scale);
         let h_metrics = glyph.h_metrics();
         let left_side_bearing = h_metrics.left_side_bearing.round() as i32;
-        println!("left side bearing: {}", left_side_bearing);
+        
         let advance_width = h_metrics.advance_width.round() as i32;
-        println!("advance width: {}", advance_width);
-
+        
         let glyph = glyph.positioned(point(0.0, 0.0));
-        let bounding_box = glyph.pixel_bounding_box().unwrap();
+        let bounding_box = glyph.pixel_bounding_box().unwrap_or(Rect { min: Point{x: 0, y: 0}, max: Point{x: 0, y: 0} });
         let bounding_top = bounding_box.min.y;
         let bounding_bottom = bounding_box.max.y;
         let bounding_left = bounding_box.min.x;
         let bounding_right = bounding_box.max.x;
-        let margin_top = ascent + bounding_top; // ascent - (abs bounding_top)
-        let margin_bottom = -(descent + bounding_bottom); // -(bounding_bottom - (abs descent))
+        let margin_top = ascent + bounding_top + line_gap/2; // ascent - (abs bounding_top)
+        let margin_bottom = -(descent + bounding_bottom) + line_gap/2; // bounding_bottom - (abs descent)
         assert!(margin_top >= 0, "margin top is negative: {}", margin_top);
         assert!(
             margin_bottom >= 0,
@@ -87,13 +92,20 @@ impl<'a> ToUINode for Char<'a> {
         );
         let margin_left = left_side_bearing + bounding_left; // left_side_bearing - (abs bounding_left)
         let margin_right = advance_width - bounding_right; // advance_width - (abs bounding_right)
-
+        println!("ascent: {}", ascent);
+        println!("descent: {}", descent);
+        println!("line gap: {}", line_gap);
+        println!("left side bearing: {}", left_side_bearing);
+        println!("advance width: {}", advance_width);
+        println!("font char: {}", self.character);
         println!("bounding top: {}", bounding_top);
         println!("bounding bottom: {}", bounding_bottom);
         println!("bounding left: {}", bounding_left);
         println!("bounding right: {}", bounding_right);
         let width = bounding_box.width() as i32;
         let height = bounding_box.height() as i32;
+        println!("width: {}", width);
+        println!("height: {}", height);
         UINode {
             width,
             height,
@@ -105,7 +117,9 @@ impl<'a> ToUINode for Char<'a> {
             padding: 0,
             meta: UIRenderableMeta::Font {
                 character: self.character,
+                font_path: self.font_path.clone(),
             },
+            color: cgmath::Vector4::new(0.0, 0.0, 0.0, 1.0),
         }
     }
 }
@@ -117,30 +131,41 @@ impl ToUINode for Text {
             CacheValue::Font(font) => font,
             _ => panic!("Font not found"),
         };
-        let max_height_with_margin = self
+        let children_ui_nodes = self
             .initial_text
             .chars()
             .map(|c| {
                 let c = Char {
                     character: c,
                     font: &font,
+                    font_path: self.font_path.clone(),
                     scale: self.scale,
                 };
-                let ui_node = c.to_ui_node();
+                c.to_ui_node()
+            }).collect::<Vec<_>>();
+        let max_height_with_margin = children_ui_nodes
+            .iter()
+            .map(|ui_node| {
                 ui_node.height + ui_node.margin_top + ui_node.margin_bottom
             })
             .fold(0, i32::max);
-        todo!()
-        // UINode{
-        //     width: 0,
-        //     height: 0,
-        //     children: Children::NoChildren,
-        //     padding_left: 0,
-        //     padding_right: 0,
-        //     padding_top: 0,
-        //     padding_bottom: 0,
-        //     margin: 0,
-        //     meta: UIRenderableMeta::Font{character: 'a'},
-        // }
+        let width_sum_with_margin: i32 = children_ui_nodes
+            .iter()
+            .map(|ui_node| {
+                ui_node.width + ui_node.margin_left + ui_node.margin_right
+            })
+            .sum();
+        UINode{
+            width: width_sum_with_margin + 2* self.padding,
+            height: max_height_with_margin + 2* self.padding,
+            children: crate::ui_node::Children::HorizontalLayout(children_ui_nodes),
+            margin_top: 0,
+            margin_bottom: 0,
+            margin_left: 0,
+            margin_right: 0,
+            padding: self.padding,
+            meta: UIRenderableMeta::Color,
+            color: self.color,
+        }
     }
 }

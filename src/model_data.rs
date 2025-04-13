@@ -1,13 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use russimp::{
-    Matrix4x4,
-    material::{Material, TextureType},
-    scene::Scene,
-};
 use wgpu::BindGroup;
 
-use crate::{model_meta::ModelMeta, my_texture::MyTexture};
+use crate::model_meta::ModelMeta;
 
 #[derive(Debug, Clone)]
 pub struct MyMesh {

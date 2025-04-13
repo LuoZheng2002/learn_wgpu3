@@ -8,7 +8,7 @@ use winit::{
 };
 
 use crate::{
-    render_context::{self, RenderContext},
+    render_context::{RenderContext},
     state::State,
 };
 
@@ -37,7 +37,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 self.window.as_ref().unwrap().request_redraw();
-                self.state.update();
+                self.state.update(&self.render_context.as_ref().unwrap().size);
                 match self
                     .render_context
                     .as_mut()
