@@ -254,13 +254,8 @@ impl RenderContext {
                 (ui_renderable, instances.clone())
             })
             .collect::<Vec<_>>();
-        let max_ui_sort_order = state
-            .max_ui_sort_order
-            .expect("forget to set max ui sort order");
-        let norm_factor = (max_ui_sort_order + 2) as f32;
         self.ui_pipeline.render(
             &ui_renderables,
-            norm_factor,
             &mut encoder,
             &self.device,
             &self.queue,
@@ -271,7 +266,6 @@ impl RenderContext {
 
         state.model_render_submissions.clear();
         state.ui_render_submissions.clear();
-        state.max_ui_sort_order = None;
 
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));

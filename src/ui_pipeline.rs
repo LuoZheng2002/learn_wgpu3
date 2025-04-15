@@ -1,13 +1,13 @@
 // it contains a RenderPipeline, can store drawables, and render them
 // different pipelines have different binding requirements, so the model types are different
 
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use wgpu::{RenderPipeline, util::DeviceExt};
 
 use crate::{
     my_texture::MyTexture,
-    ui_renderable::{UIInstance, UIInstanceRaw, UIRenderable},
+    ui_renderable::{SortOrder, UIInstance, UIInstanceRaw, UIRenderable},
 };
 
 // model
@@ -183,7 +183,6 @@ impl UIPipeline {
     pub fn render(
         &mut self,
         renderables: &Vec<(&UIRenderable, Arc<Vec<UIInstance>>)>,
-        norm_factor: f32,
         encoder: &mut wgpu::CommandEncoder,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -191,6 +190,17 @@ impl UIPipeline {
         depth_view: &wgpu::TextureView, // use depth to sort
         index_buffer: &wgpu::Buffer,
     ) {
+        let mut sort_orders = BTreeSet::<SortOrder>::new();
+        for (_, instances) in renderables.iter() {
+            for instance in instances.iter() {
+                sort_orders.insert(instance.sort_order);
+            }
+        }
+        let sort_order_to_depth = sort_orders
+            .iter()
+            .enumerate()
+            .map(|(i, sort_order)| (sort_order.clone(), 1.0 - i as f32 / sort_orders.len() as f32))
+            .collect::<std::collections::HashMap<_, _>>();
         // begin render pass
         let mut render_pass = self.create_render_pass(encoder, color_view, depth_view);
         render_pass.set_pipeline(&self.pipeline);
@@ -200,7 +210,7 @@ impl UIPipeline {
             render_pass.set_bind_group(0, &ui_renderable.material_bind_group, &[]);
             let instance_data = instances
                 .iter()
-                .map(|instance| instance.to_raw(norm_factor))
+                .map(|instance| instance.to_raw(&sort_order_to_depth))
                 .collect::<Vec<_>>();
             let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Instance Buffer"),

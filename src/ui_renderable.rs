@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cmp::Ordering, collections::HashMap, sync::Arc};
 
 
 use crate::{
@@ -93,19 +93,41 @@ impl UIRenderableMeta {
     }
 }
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub struct SortOrder{
+    pub canvas_order: u32,
+    pub element_order: u32,
+}
+impl PartialOrd for SortOrder {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for SortOrder {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.canvas_order.cmp(&other.canvas_order) {
+            Ordering::Equal => self.element_order.cmp(&other.element_order),
+            ord => ord,
+        }
+    }
+}
 pub struct UIInstance {
     pub location: [f32; 4], // left, top, right, bottom
     pub color: cgmath::Vector4<f32>,
-    pub sort_order: u32,
+    pub sort_order: SortOrder,
     pub use_texture: bool,
 }
 
 impl UIInstance {
-    pub fn to_raw(&self, norm_factor: f32) -> UIInstanceRaw {
+    pub fn to_raw(&self, sort_order_to_depth: &HashMap<SortOrder, f32>) -> UIInstanceRaw {
         UIInstanceRaw {
             color: self.color.into(),
             location: self.location,
-            depth: 1.0 - self.sort_order as f32 / norm_factor,
+            // depth: 1.0 - self.sort_order as f32 / norm_factor,
+            depth: sort_order_to_depth
+                .get(&self.sort_order)
+                .expect("Sort order not found")
+                .clone(),
             use_texture: if self.use_texture { 1 } else { 0 },
         }
     }

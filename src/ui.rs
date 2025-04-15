@@ -2,20 +2,19 @@
 // layout information
 // an element can have: zero children, one child, or many children
 
+use either::Either;
 use rusttype::{point, Font, Point, Rect};
 
 use crate::{
     cache::{get_font, CacheValue},
-    ui_node::{self, UINode},
+    ui_node::{self, BoxDimensions, BoxModel, CanvasPadding, DependentLength, LengthUnit, UINode},
     ui_renderable::UIRenderableMeta,
 };
 
 pub trait ToUINode {
-    fn to_ui_node(&self) -> UINode;
+    fn to_ui_node(&self) -> UINode<DependentLength, LengthUnit>;
 }
 
-#[derive(Default, Clone)]
-pub struct LayoutInfo {}
 
 pub enum Children {
     NoChildren,
@@ -26,29 +25,56 @@ pub enum Children {
     GridLayout(Vec<Vec<Box<dyn ToUINode>>>),
 }
 
-pub struct Span {
-    pub children: Children,
-    pub layout_info: LayoutInfo,
+
+
+
+
+// ui root
+pub struct Canvas{
+    pub padding: [CanvasPadding; 4],
+    pub screen_width: i32,
+    pub screen_height: i32,
+    pub child: Option<Box<dyn ToUINode>>,
 }
 
 pub struct Text {
     pub initial_text: String,
     pub font_path: String,
     pub scale: f32,
-    pub layout_info: LayoutInfo,
-    pub padding: i32,
+    pub margin: [LengthUnit; 4],
+    pub padding: [LengthUnit; 4],
     pub color: cgmath::Vector4<f32>,
+    pub width: Option<DependentLength>,
+    pub height: Option<DependentLength>,
 }
 
 impl Text {
-    pub fn new(initial_text: String, font_path: String, scale: f32, padding: i32, color: cgmath::Vector4<f32>) -> Self {
+    pub fn new(initial_text: String,
+        font_path: String,
+        scale: f32,
+        margin: Either<LengthUnit, [LengthUnit; 4]>,
+        padding: Either<LengthUnit, [LengthUnit; 4]>,
+        color: cgmath::Vector4<f32>,
+        width: Option<DependentLength>,
+        height: Option<DependentLength>,
+    ) -> Self {
+        let margin = match margin {
+            Either::Left(m) => [m.clone(), m.clone(), m.clone(), m.clone()],
+            Either::Right(m) => m,
+        };
+        let padding = match padding {
+            Either::Left(p) => [p.clone(), p.clone(), p.clone(), p.clone()],
+            Either::Right(p) => p,
+        };
         Self {
             initial_text,
             font_path,
             scale,
-            layout_info: LayoutInfo::default(),
+            margin,
             padding,
             color,
+            width,
+            height,
         }
     }
 }
@@ -61,7 +87,7 @@ pub struct Char<'a> {
 }
 
 impl<'a> ToUINode for Char<'a> {
-    fn to_ui_node(&self) -> UINode {
+    fn to_ui_node(&self) -> UINode<DependentLength, LengthUnit> {
         let scale = rusttype::Scale::uniform(self.scale);
         let v_metrics = self.font.v_metrics(scale);
         // round ascent to the nearest integer
@@ -92,40 +118,43 @@ impl<'a> ToUINode for Char<'a> {
         );
         let margin_left = left_side_bearing + bounding_left; // left_side_bearing - (abs bounding_left)
         let margin_right = advance_width - bounding_right; // advance_width - (abs bounding_right)
-        println!("ascent: {}", ascent);
-        println!("descent: {}", descent);
-        println!("line gap: {}", line_gap);
-        println!("left side bearing: {}", left_side_bearing);
-        println!("advance width: {}", advance_width);
-        println!("font char: {}", self.character);
-        println!("bounding top: {}", bounding_top);
-        println!("bounding bottom: {}", bounding_bottom);
-        println!("bounding left: {}", bounding_left);
-        println!("bounding right: {}", bounding_right);
         let width = bounding_box.width() as i32;
         let height = bounding_box.height() as i32;
-        println!("width: {}", width);
-        println!("height: {}", height);
+        let box_dimensions: BoxDimensions<DependentLength, LengthUnit> = BoxDimensions {
+            width: DependentLength::fixed_pixels(width),
+            height: DependentLength::fixed_pixels(height),
+            margin: [
+                LengthUnit::Pixels(margin_top),
+                LengthUnit::Pixels(margin_right),
+                LengthUnit::Pixels(margin_bottom),
+                LengthUnit::Pixels(margin_left),
+            ],
+            padding: [
+                LengthUnit::Pixels(0),
+                LengthUnit::Pixels(0),
+                LengthUnit::Pixels(0),
+                LengthUnit::Pixels(0),
+            ],
+        };
+        let box_model: BoxModel<DependentLength, LengthUnit> = BoxModel {
+            dimensions: box_dimensions,
+            h_alignment: ui_node::HorizontalAlignment::Left,
+            v_alignment: ui_node::VerticalAlignment::Top,
+            color: cgmath::Vector4::new(0.0, 0.0, 0.0, 1.0),
+        };
         UINode {
-            width,
-            height,
+            box_model,
             children: crate::ui_node::Children::NoChildren,
-            margin_top,
-            margin_bottom,
-            margin_left,
-            margin_right,
-            padding: 0,
             meta: UIRenderableMeta::Font {
                 character: self.character,
                 font_path: self.font_path.clone(),
             },
-            color: cgmath::Vector4::new(0.0, 0.0, 0.0, 1.0),
         }
     }
 }
 
 impl ToUINode for Text {
-    fn to_ui_node(&self) -> UINode {
+    fn to_ui_node(&self) -> UINode<DependentLength, LengthUnit> {
         let font = get_font(self.font_path.clone());
         let font = match font.as_ref() {
             CacheValue::Font(font) => font,
@@ -142,30 +171,157 @@ impl ToUINode for Text {
                     scale: self.scale,
                 };
                 c.to_ui_node()
-            }).collect::<Vec<_>>();
-        let max_height_with_margin = children_ui_nodes
-            .iter()
-            .map(|ui_node| {
-                ui_node.height + ui_node.margin_top + ui_node.margin_bottom
-            })
-            .fold(0, i32::max);
-        let width_sum_with_margin: i32 = children_ui_nodes
-            .iter()
-            .map(|ui_node| {
-                ui_node.width + ui_node.margin_left + ui_node.margin_right
-            })
-            .sum();
-        UINode{
-            width: width_sum_with_margin + 2* self.padding,
-            height: max_height_with_margin + 2* self.padding,
-            children: crate::ui_node::Children::HorizontalLayout(children_ui_nodes),
-            margin_top: 0,
-            margin_bottom: 0,
-            margin_left: 0,
-            margin_right: 0,
-            padding: self.padding,
-            meta: UIRenderableMeta::Color,
+            }).collect::<Vec<_>>();        
+        let box_dimensions: BoxDimensions<DependentLength, LengthUnit> = BoxDimensions {
+            width: self.width.clone().unwrap_or(DependentLength::fit_children_default()),
+            height: self.height.clone().unwrap_or(DependentLength::fit_children_default()),
+            margin: self.margin.clone(),
+            padding: self.padding.clone(),
+        };
+        let box_model = BoxModel {
+            dimensions: box_dimensions,
+            h_alignment: ui_node::HorizontalAlignment::Left,
+            v_alignment: ui_node::VerticalAlignment::Top,
             color: self.color,
+        };
+        UINode{
+            box_model,
+            children: crate::ui_node::Children::HorizontalLayout(
+                children_ui_nodes
+            ),
+            meta: UIRenderableMeta::Color,
+        }
+    }
+}
+
+pub struct Button{
+    pub box_model: BoxModel<DependentLength, LengthUnit>,
+    child: Option<Box<dyn ToUINode>>,
+}
+
+impl Button{
+    pub fn new(
+        width: DependentLength,
+        height: DependentLength,
+        margin: Either<LengthUnit, [LengthUnit; 4]>,
+        padding: Either<LengthUnit, [LengthUnit; 4]>,
+        color: cgmath::Vector4<f32>,
+    ) -> Self {
+        let margin = match margin {
+            Either::Left(m) => [m.clone(), m.clone(), m.clone(), m.clone()],
+            Either::Right(m) => m,
+        };
+        let padding = match padding {
+            Either::Left(p) => [p.clone(), p.clone(), p.clone(), p.clone()],
+            Either::Right(p) => p,
+        };
+        let box_dimensions: BoxDimensions<DependentLength, LengthUnit> = BoxDimensions {
+            width,
+            height,
+            margin,
+            padding,
+        };
+        let box_model = BoxModel {
+            dimensions: box_dimensions,
+            h_alignment: ui_node::HorizontalAlignment::Center,
+            v_alignment: ui_node::VerticalAlignment::Center,
+            color,
+        };
+        Self { 
+            box_model,
+            child: None,
+        }
+    }
+    pub fn set_child(&mut self, child: Box<dyn ToUINode>) {
+        self.child = Some(child);
+    }
+}
+impl ToUINode for Button {
+    fn to_ui_node(&self) -> UINode<DependentLength, LengthUnit> {
+        let children = match &self.child{
+            Some(child) => {
+                let child_ui_node = child.to_ui_node();
+                crate::ui_node::Children::OneChild(Box::new(child_ui_node))
+            }
+            None => crate::ui_node::Children::NoChildren,
+        };
+        UINode{
+            box_model: self.box_model.clone(),
+            children,
+            meta: UIRenderableMeta::Color,
+        }
+    }
+}
+
+pub enum SpanDirection{
+    Horizontal,
+    Vertical,
+}
+
+pub struct Span {
+    pub direction: SpanDirection,
+    pub children: Vec<Box<dyn ToUINode>>,
+    pub box_model: BoxModel<DependentLength, LengthUnit>,
+}
+
+impl Span{
+    pub fn new(
+        direction: SpanDirection,
+        width: DependentLength,
+        height: DependentLength,
+        margin: Either<LengthUnit, [LengthUnit; 4]>,
+        padding: Either<LengthUnit, [LengthUnit; 4]>,
+        color: cgmath::Vector4<f32>,
+    ) -> Self {
+        let margin = match margin {
+            Either::Left(m) => [m.clone(), m.clone(), m.clone(), m.clone()],
+            Either::Right(m) => m,
+        };
+        let padding = match padding {
+            Either::Left(p) => [p.clone(), p.clone(), p.clone(), p.clone()],
+            Either::Right(p) => p,
+        };
+        let box_dimensions: BoxDimensions<DependentLength, LengthUnit> = BoxDimensions {
+            width,
+            height,
+            margin,
+            padding,
+        };
+        let box_model = BoxModel {
+            dimensions: box_dimensions,
+            h_alignment: ui_node::HorizontalAlignment::Center,
+            v_alignment: ui_node::VerticalAlignment::Center,
+            color,
+        };
+        Self { 
+            direction,
+            children: Vec::new(),
+            box_model,
+        }
+    }
+    pub fn push_child(&mut self, child: Box<dyn ToUINode>) {
+        self.children.push(child);
+    }
+}
+
+impl ToUINode for Span {
+    fn to_ui_node(&self) -> UINode<DependentLength, LengthUnit> {
+        let children_ui_nodes = self
+            .children
+            .iter()
+            .map(|c| c.to_ui_node())
+            .collect::<Vec<_>>();
+        UINode{
+            box_model: self.box_model.clone(),
+            children: match &self.direction{
+                SpanDirection::Horizontal => crate::ui_node::Children::HorizontalLayout(
+                    children_ui_nodes
+                ),
+                SpanDirection::Vertical => crate::ui_node::Children::VerticalLayout(
+                    children_ui_nodes
+                ),
+            },
+            meta: UIRenderableMeta::Color,
         }
     }
 }

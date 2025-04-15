@@ -1,10 +1,11 @@
 use std::{collections::HashMap, time::Instant};
 
 use cgmath::{Euler, Quaternion};
+use either::Either;
 use winit::window;
 
 use crate::{
-    model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{Text, ToUINode}, ui_renderable::{UIInstance, UIRenderableMeta}
+    canvas::Canvas, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{Button, Span, SpanDirection, Text, ToUINode}, ui_node::{CanvasPadding, DependentLength, HorizontalAlignment, LengthUnit, VerticalAlignment}, ui_renderable::{UIInstance, UIRenderableMeta}
 };
 
 // model path,
@@ -20,8 +21,8 @@ pub struct State {
     pub model_render_submissions: HashMap<ModelMeta, Vec<ModelInstance>>,
     // use Arc here because we need to map the container to another container
     pub ui_render_submissions: HashMap<UIRenderableMeta, Vec<UIInstance>>,
-    pub max_ui_sort_order: Option<u32>,
     pub light_position: cgmath::Vector3<f32>,
+    pub fps: u32,
 }
 
 impl State {
@@ -32,16 +33,10 @@ impl State {
             .push(instance);
     }
     fn submit_ui_renderable(&mut self, ui_meta: UIRenderableMeta, instance: UIInstance) {
-        println!("Submitted instance with location: {:?}", instance.location);
-        let new_order = instance.sort_order;
         self.ui_render_submissions
             .entry(ui_meta)
             .or_insert_with(|| Vec::new())
             .push(instance);
-        let order = self.max_ui_sort_order.get_or_insert(0);
-        if new_order > *order {
-            *order = new_order;
-        }
     }
 
     pub fn update(&mut self, window_size: &winit::dpi::PhysicalSize<u32>) {
@@ -50,6 +45,7 @@ impl State {
         let current_time = fps_timer.elapsed().as_secs_f32();
         if current_time >= 1.0 {
             println!("FPS: {}", self.accumulated_frame_num);
+            self.fps = self.accumulated_frame_num;
             self.accumulated_frame_num = 0;
             *fps_timer = Instant::now();
         } else {
@@ -104,26 +100,50 @@ impl State {
         // };
         // self.submit_ui_renderable(ui_meta1, ui_instance1);
 
-        let text = Text::new("你好asdf".to_string(),
-            "assets/KaiTi.ttf".to_string(),
+        let text = Text::new(format!("fps: {}", self.fps).to_string(),
+            "assets/times.ttf".to_string(),
             50.0,
-            20,
-            cgmath::Vector4 { x: 0.0, y: 0.0, z: 1.0, w: 1.0 }
+            Either::Left(LengthUnit::Pixels(0)),
+            Either::Left(LengthUnit::Pixels(0)),
+            cgmath::Vector4 { x: 0.0, y: 0.0, z: 1.0, w: 1.0 },
+            None,
+            None,
             );
-        let ui_node = text.to_ui_node();
-        let ui_renderables = ui_node.to_ui_renderables(
-            0,
-            window_size.width,
-            window_size.height,
-            window_size.width as i32 / 6,
-            window_size.height as i32 / 3,
+        let mut canvas = Canvas::new(
+            0, 
+            Either::Left(CanvasPadding::Pixels(20)), 
+            HorizontalAlignment::Left,
+            VerticalAlignment::Top,
+        );
+        let button = Button::new(
+            DependentLength::fixed_pixels(300),
+            DependentLength::fixed_pixels(100),
+            Either::Left(LengthUnit::Pixels(20)),
+            Either::Left(LengthUnit::Pixels(20)),
+            cgmath::Vector4 { x: 0.0, y: 1.0, z: 0.0, w: 1.0 }
+        );
+        let mut span = Span::new(
+            SpanDirection::Vertical,
+            DependentLength::FitChildren { default_length: LengthUnit::RelativeScreenWidth(0.5) },
+            DependentLength::FitChildren { default_length: LengthUnit::RelativeScreenHeight(0.5) },
+            Either::Left(LengthUnit::Pixels(20)),
+            Either::Left(LengthUnit::Pixels(20)),
+            cgmath::Vector4 { x: 0.7, y: 0.7, z: 0.7, w: 1.0 },
+        );
+        span.push_child(Box::new(text));
+        span.push_child(Box::new(button));
+        canvas.set_child(Box::new(span));
+        let screen_width = window_size.width;
+        let screen_height = window_size.height;
+        let ui_renderables = canvas.to_ui_renderables(
+            screen_width,
+            screen_height,            
         );
         for (ui_meta, instances) in ui_renderables {
             for instance in instances {
                 self.submit_ui_renderable(ui_meta.clone(), instance);
             }
         }
-        self.max_ui_sort_order.get_or_insert(0);
         // panic!()
     }
 }
@@ -139,7 +159,7 @@ impl Default for State {
             model_render_submissions: HashMap::new(),
             ui_render_submissions: HashMap::new(),
             light_position: cgmath::Vector3::new(0.0, 0.0, 0.0),
-            max_ui_sort_order: None,
+            fps: 0,
         }
     }
 }

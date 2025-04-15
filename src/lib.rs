@@ -11,7 +11,7 @@ pub mod opaque_pipeline;
 pub mod render_context;
 pub mod state;
 pub mod ui;
-pub mod ui_canvas;
+pub mod canvas;
 pub mod ui_node;
 pub mod ui_pipeline;
 pub mod ui_renderable;
