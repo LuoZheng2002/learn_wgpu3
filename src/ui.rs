@@ -7,12 +7,12 @@ use rusttype::{point, Font, Point, Rect};
 
 use crate::{
     cache::{get_font, CacheValue},
-    ui_node::{self, BoxDimensions, BoxModel, CanvasPadding, DependentLength, LengthUnit, UINode},
+    ui_node::{self, BoxDimensions, BoxModel, CanvasPadding, BoundedLength, DependentLength, UINode},
     ui_renderable::UIRenderableMeta,
 };
 
 pub trait ToUINode {
-    fn to_ui_node(&self) -> UINode<DependentLength, LengthUnit>;
+    fn to_ui_node(&self) -> UINode<BoundedLength, DependentLength>;
 }
 
 
@@ -38,25 +38,28 @@ pub struct Canvas{
 }
 
 pub struct Text {
-    pub initial_text: String,
+    pub text: String,
     pub font_path: String,
     pub scale: f32,
-    pub margin: [LengthUnit; 4],
-    pub padding: [LengthUnit; 4],
+    pub margin: [DependentLength; 4],
+    pub padding: [DependentLength; 4],
     pub color: cgmath::Vector4<f32>,
-    pub width: Option<DependentLength>,
-    pub height: Option<DependentLength>,
+    pub width: BoundedLength,
+    pub height: BoundedLength,
 }
+
+
+
 
 impl Text {
     pub fn new(initial_text: String,
         font_path: String,
         scale: f32,
-        margin: Either<LengthUnit, [LengthUnit; 4]>,
-        padding: Either<LengthUnit, [LengthUnit; 4]>,
+        margin: Either<DependentLength, [DependentLength; 4]>,
+        padding: Either<DependentLength, [DependentLength; 4]>,
         color: cgmath::Vector4<f32>,
-        width: Option<DependentLength>,
-        height: Option<DependentLength>,
+        width: BoundedLength,
+        height: BoundedLength,
     ) -> Self {
         let margin = match margin {
             Either::Left(m) => [m.clone(), m.clone(), m.clone(), m.clone()],
@@ -67,7 +70,7 @@ impl Text {
             Either::Right(p) => p,
         };
         Self {
-            initial_text,
+            text: initial_text,
             font_path,
             scale,
             margin,
@@ -76,6 +79,9 @@ impl Text {
             width,
             height,
         }
+    }
+    pub fn set_text(&mut self, text: String) {
+        self.text = text;
     }
 }
 
@@ -87,7 +93,7 @@ pub struct Char<'a> {
 }
 
 impl<'a> ToUINode for Char<'a> {
-    fn to_ui_node(&self) -> UINode<DependentLength, LengthUnit> {
+    fn to_ui_node(&self) -> UINode<BoundedLength, DependentLength> {
         let scale = rusttype::Scale::uniform(self.scale);
         let v_metrics = self.font.v_metrics(scale);
         // round ascent to the nearest integer
@@ -120,27 +126,28 @@ impl<'a> ToUINode for Char<'a> {
         let margin_right = advance_width - bounding_right; // advance_width - (abs bounding_right)
         let width = bounding_box.width() as i32;
         let height = bounding_box.height() as i32;
-        let box_dimensions: BoxDimensions<DependentLength, LengthUnit> = BoxDimensions {
-            width: DependentLength::fixed_pixels(width),
-            height: DependentLength::fixed_pixels(height),
+        let box_dimensions: BoxDimensions<BoundedLength, DependentLength> = BoxDimensions {
+            width: BoundedLength::fixed_pixels(width),
+            height: BoundedLength::fixed_pixels(height),
             margin: [
-                LengthUnit::Pixels(margin_top),
-                LengthUnit::Pixels(margin_right),
-                LengthUnit::Pixels(margin_bottom),
-                LengthUnit::Pixels(margin_left),
+                DependentLength::Pixels(margin_top),
+                DependentLength::Pixels(margin_right),
+                DependentLength::Pixels(margin_bottom),
+                DependentLength::Pixels(margin_left),
             ],
             padding: [
-                LengthUnit::Pixels(0),
-                LengthUnit::Pixels(0),
-                LengthUnit::Pixels(0),
-                LengthUnit::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
             ],
         };
-        let box_model: BoxModel<DependentLength, LengthUnit> = BoxModel {
+        let box_model: BoxModel<BoundedLength, DependentLength> = BoxModel {
             dimensions: box_dimensions,
             h_alignment: ui_node::HorizontalAlignment::Left,
             v_alignment: ui_node::VerticalAlignment::Top,
             color: cgmath::Vector4::new(0.0, 0.0, 0.0, 1.0),
+            uniform_division: false,
         };
         UINode {
             box_model,
@@ -154,14 +161,14 @@ impl<'a> ToUINode for Char<'a> {
 }
 
 impl ToUINode for Text {
-    fn to_ui_node(&self) -> UINode<DependentLength, LengthUnit> {
+    fn to_ui_node(&self) -> UINode<BoundedLength, DependentLength> {
         let font = get_font(self.font_path.clone());
         let font = match font.as_ref() {
             CacheValue::Font(font) => font,
             _ => panic!("Font not found"),
         };
         let children_ui_nodes = self
-            .initial_text
+            .text
             .chars()
             .map(|c| {
                 let c = Char {
@@ -172,9 +179,9 @@ impl ToUINode for Text {
                 };
                 c.to_ui_node()
             }).collect::<Vec<_>>();        
-        let box_dimensions: BoxDimensions<DependentLength, LengthUnit> = BoxDimensions {
-            width: self.width.clone().unwrap_or(DependentLength::fit_children_default()),
-            height: self.height.clone().unwrap_or(DependentLength::fit_children_default()),
+        let box_dimensions: BoxDimensions<BoundedLength, DependentLength> = BoxDimensions {
+            width: self.width.clone(),
+            height: self.height.clone(),
             margin: self.margin.clone(),
             padding: self.padding.clone(),
         };
@@ -183,6 +190,7 @@ impl ToUINode for Text {
             h_alignment: ui_node::HorizontalAlignment::Left,
             v_alignment: ui_node::VerticalAlignment::Top,
             color: self.color,
+            uniform_division: false,
         };
         UINode{
             box_model,
@@ -195,16 +203,21 @@ impl ToUINode for Text {
 }
 
 pub struct Button{
-    pub box_model: BoxModel<DependentLength, LengthUnit>,
+    pub box_model: BoxModel<BoundedLength, DependentLength>,
     child: Option<Box<dyn ToUINode>>,
 }
 
+// callback function
+
+
+
+
 impl Button{
     pub fn new(
-        width: DependentLength,
-        height: DependentLength,
-        margin: Either<LengthUnit, [LengthUnit; 4]>,
-        padding: Either<LengthUnit, [LengthUnit; 4]>,
+        width: BoundedLength,
+        height: BoundedLength,
+        margin: Either<DependentLength, [DependentLength; 4]>,
+        padding: Either<DependentLength, [DependentLength; 4]>,
         color: cgmath::Vector4<f32>,
     ) -> Self {
         let margin = match margin {
@@ -215,7 +228,7 @@ impl Button{
             Either::Left(p) => [p.clone(), p.clone(), p.clone(), p.clone()],
             Either::Right(p) => p,
         };
-        let box_dimensions: BoxDimensions<DependentLength, LengthUnit> = BoxDimensions {
+        let box_dimensions: BoxDimensions<BoundedLength, DependentLength> = BoxDimensions {
             width,
             height,
             margin,
@@ -226,6 +239,7 @@ impl Button{
             h_alignment: ui_node::HorizontalAlignment::Center,
             v_alignment: ui_node::VerticalAlignment::Center,
             color,
+            uniform_division: false,
         };
         Self { 
             box_model,
@@ -237,7 +251,7 @@ impl Button{
     }
 }
 impl ToUINode for Button {
-    fn to_ui_node(&self) -> UINode<DependentLength, LengthUnit> {
+    fn to_ui_node(&self) -> UINode<BoundedLength, DependentLength> {
         let children = match &self.child{
             Some(child) => {
                 let child_ui_node = child.to_ui_node();
@@ -261,17 +275,18 @@ pub enum SpanDirection{
 pub struct Span {
     pub direction: SpanDirection,
     pub children: Vec<Box<dyn ToUINode>>,
-    pub box_model: BoxModel<DependentLength, LengthUnit>,
+    pub box_model: BoxModel<BoundedLength, DependentLength>,
 }
 
 impl Span{
     pub fn new(
         direction: SpanDirection,
-        width: DependentLength,
-        height: DependentLength,
-        margin: Either<LengthUnit, [LengthUnit; 4]>,
-        padding: Either<LengthUnit, [LengthUnit; 4]>,
+        width: BoundedLength,
+        height: BoundedLength,
+        margin: Either<DependentLength, [DependentLength; 4]>,
+        padding: Either<DependentLength, [DependentLength; 4]>,
         color: cgmath::Vector4<f32>,
+        uniform_division: bool,
     ) -> Self {
         let margin = match margin {
             Either::Left(m) => [m.clone(), m.clone(), m.clone(), m.clone()],
@@ -281,7 +296,7 @@ impl Span{
             Either::Left(p) => [p.clone(), p.clone(), p.clone(), p.clone()],
             Either::Right(p) => p,
         };
-        let box_dimensions: BoxDimensions<DependentLength, LengthUnit> = BoxDimensions {
+        let box_dimensions: BoxDimensions<BoundedLength, DependentLength> = BoxDimensions {
             width,
             height,
             margin,
@@ -292,6 +307,7 @@ impl Span{
             h_alignment: ui_node::HorizontalAlignment::Center,
             v_alignment: ui_node::VerticalAlignment::Center,
             color,
+            uniform_division,
         };
         Self { 
             direction,
@@ -305,7 +321,7 @@ impl Span{
 }
 
 impl ToUINode for Span {
-    fn to_ui_node(&self) -> UINode<DependentLength, LengthUnit> {
+    fn to_ui_node(&self) -> UINode<BoundedLength, DependentLength> {
         let children_ui_nodes = self
             .children
             .iter()

@@ -7,7 +7,7 @@
 // padding, margin, children
 // width, height,
 
-use std::{collections::HashMap, default, i32};
+use std::{collections::HashMap, default, i32, ops::Bound};
 
 use crate::ui_renderable::{SortOrder, UIInstance, UIRenderableMeta};
 
@@ -33,6 +33,40 @@ pub enum Children<L1: UINodeLength1, L2: UINodeLength2>{
     GridLayout(Vec<Vec<UINode<L1, L2>>>),
 }
 
+impl Children<BoundedLength, DependentLength>{
+    pub fn calculate_dimensions(
+            self,
+            parent_width: i32,
+            parent_height: i32,
+            screen_width: u32,
+            screen_height: u32,
+        )->Children<i32, i32>{
+        match self{
+            Children::NoChildren => Children::NoChildren,
+            Children::OneChild(child) => {
+                let child = child.calculate_dimensions(parent_width, parent_height, screen_width, screen_height);
+                Children::OneChild(Box::new(child))
+            }
+            Children::HorizontalLayout(children) => {
+                let new_children = children.into_iter().map(|child| {
+                    child.calculate_dimensions(parent_width, parent_height, screen_width, screen_height)
+                }).collect::<Vec<_>>();
+                Children::HorizontalLayout(new_children)
+            }
+            Children::VerticalLayout(children) => {
+                let new_children = children.into_iter().map(|child| {
+                    child.calculate_dimensions(parent_width, parent_height, screen_width, screen_height)
+                }).collect::<Vec<_>>();
+                Children::VerticalLayout(new_children)
+            }
+            Children::GridLayout(children) => {
+                todo!()
+            }
+        }
+    }
+}
+
+
 #[derive(Clone)]
 pub enum CanvasPadding{
     Pixels(i32),
@@ -41,73 +75,52 @@ pub enum CanvasPadding{
 }
 
 #[derive(Clone)]
-pub enum LengthUnit{
+pub enum DependentLength{
     Pixels(i32),
     RelativeScreenWidth(f32),
     RelativeScreenHeight(f32),
     RelativeParent(f32),
 }
-
-// impl LengthUnit{
-//     pub fn pixels(length: i32)-> Self{
-//         Self::Pixels(length)
-//     }
-// }
-
-#[derive(Clone)]
-pub struct ChildrenIndependent{
-    pub preferred_length: LengthUnit,
-    pub min_length: Option<LengthUnit>,
-    pub max_length: Option<LengthUnit>,
-}
-
-#[derive(Clone)]
-pub enum DependentLength{
-    ChildrenIndependent(ChildrenIndependent),
-    FitChildren{
-        default_length: LengthUnit,
-    }
-}
-
 impl DependentLength{
     pub fn zero()-> Self{
-        Self::ChildrenIndependent(
-            ChildrenIndependent{
-                preferred_length: LengthUnit::Pixels(0),
-                min_length: Some(LengthUnit::Pixels(0)),
-                max_length: Some(LengthUnit::Pixels(0)),
-            }
-        )
+        Self::Pixels(0)
     }
-    pub fn fixed_dependent(length: LengthUnit)-> Self{
-        Self::ChildrenIndependent(
-            ChildrenIndependent{
+}
+
+#[derive(Clone)]
+pub struct BoundedLength{
+    pub preferred_length: DependentLength,
+    pub min_length: Option<DependentLength>,
+    pub max_length: Option<DependentLength>,
+}
+
+impl BoundedLength{
+    pub fn zero()-> Self{
+        Self { 
+            preferred_length: DependentLength::zero(), 
+            min_length: Some(DependentLength::zero()),
+            max_length: Some(DependentLength::zero()),
+        }
+    }
+    pub fn fixed_dependent(length: DependentLength)-> Self{
+        Self {
                 preferred_length: length.clone(),
                 min_length: Some(length.clone()),
                 max_length: Some(length),
-            }
-        )
-    }
-    pub fn fixed_pixels(length: i32)-> Self{
-        Self::fixed_dependent(LengthUnit::Pixels(length))
-    }
-    pub fn fit_children(default_length: LengthUnit)-> Self{
-        Self::FitChildren{
-            default_length,
         }
     }
-    pub fn fit_children_default()-> Self{
-        Self::fit_children(LengthUnit::RelativeScreenHeight(0.5))
+    pub fn fixed_pixels(length: i32)-> Self{
+        Self::fixed_dependent(DependentLength::Pixels(length))
     }
 }
 
 pub trait UINodeLength1{}
 impl UINodeLength1 for i32{}
-impl UINodeLength1 for DependentLength{}
+impl UINodeLength1 for BoundedLength{}
 
 pub trait UINodeLength2{}
 impl UINodeLength2 for i32{}
-impl UINodeLength2 for LengthUnit{}
+impl UINodeLength2 for DependentLength{}
 
 
 #[derive(Clone)]
@@ -133,6 +146,7 @@ pub struct BoxModel<L1: UINodeLength1, L2: UINodeLength2>{
     pub dimensions: BoxDimensions<L1, L2>,
     pub h_alignment: HorizontalAlignment,
     pub v_alignment: VerticalAlignment,
+    pub uniform_division: bool,
     pub color: cgmath::Vector4<f32>, // color is extracted from the meta because it is not a part of the bind group
 }
 
@@ -142,7 +156,7 @@ pub struct UINode<L1: UINodeLength1, L2: UINodeLength2>{
     pub meta: UIRenderableMeta, // contains optional texture information
 }
 
-impl UINode<DependentLength, LengthUnit>{
+impl UINode<BoundedLength, DependentLength>{
     pub fn calculate_dimensions(self,
         parent_width: i32, 
         parent_height: i32,
@@ -151,190 +165,81 @@ impl UINode<DependentLength, LengthUnit>{
     )-> UINode<i32, i32>{
         let box_model = self.box_model;
         let dimensions = &box_model.dimensions;
-        fn convert_length_unit_to_i32(length_unit: &LengthUnit, parent_length: i32, screen_width: u32, screen_height: u32)-> i32{
+        fn convert_dependent_length_to_i32(length_unit: &DependentLength, parent_length: i32, screen_width: u32, screen_height: u32)-> i32{
             match length_unit{
-                LengthUnit::Pixels(pixels) => *pixels,
-                LengthUnit::RelativeScreenWidth(relative) => (screen_width as f32 * relative) as i32,
-                LengthUnit::RelativeScreenHeight(relative) => (screen_height as f32 * relative) as i32,
-                LengthUnit::RelativeParent(relative) => (parent_length as f32 * relative) as i32,
+                DependentLength::Pixels(pixels) => *pixels,
+                DependentLength::RelativeScreenWidth(relative) => (screen_width as f32 * relative) as i32,
+                DependentLength::RelativeScreenHeight(relative) => (screen_height as f32 * relative) as i32,
+                DependentLength::RelativeParent(relative) => (parent_length as f32 * relative) as i32,
             }
         }
-        fn convert_independent_children_to_i32(dependent_length: &ChildrenIndependent, parent_length: i32, screen_width: u32, screen_height: u32)-> i32{
-            let ChildrenIndependent{preferred_length, min_length, max_length} = dependent_length;
-            let new_preferred_length = convert_length_unit_to_i32(preferred_length, parent_length, screen_width, screen_height);
-            let new_min_length = match min_length{
-                Some(length) => Some(convert_length_unit_to_i32(length, parent_length, screen_width, screen_height)),
-                None => None,
+        fn convert_bounded_length_to_i32(length: &BoundedLength, parent_length: i32, screen_width: u32, screen_height: u32)-> i32{
+            let BoundedLength{preferred_length, min_length, max_length} = length;
+            let preferred_length = convert_dependent_length_to_i32(preferred_length, parent_length, screen_width, screen_height);
+            let min_length = match min_length{
+                Some(length) => convert_dependent_length_to_i32(length, parent_length, screen_width, screen_height),
+                None => i32::MIN,
             };
-            let new_max_length = match max_length{
-                Some(length) => Some(convert_length_unit_to_i32(length, parent_length, screen_width, screen_height)),
-                None => None,
+            let max_length = match max_length{
+                Some(length) => convert_dependent_length_to_i32(length, parent_length, screen_width, screen_height),
+                None => i32::MAX,
             };
-            if let (Some(new_min_length), Some(new_max_length)) = (new_min_length, new_max_length){
-                if new_min_length > new_max_length{
-                    panic!("min length is greater than max length");
-                }
+            if min_length > max_length{
+                panic!("min length is greater than max length");
             }
-            let mut result_length = new_preferred_length;
-            if let Some(min_length) = new_min_length{
-                if result_length < min_length{
-                    result_length = min_length;
-                }
-            }
-            if let Some(max_length) = new_max_length{
-                if result_length > max_length{
-                    result_length = max_length;
-                }
-            }
-            result_length
+            // clamp preferred length to min and max
+            preferred_length.clamp(min_length, max_length)
         }
         // result
-        fn convert_dependent_to_i32(length: &DependentLength, parent_length: i32, screen_width: u32, screen_height: u32)->(i32, bool){
-            match length{
-                DependentLength::ChildrenIndependent(children_independent) => {
-                    let new_length = convert_independent_children_to_i32(
-                        children_independent,
-                        parent_length,
-                        screen_width, 
-                        screen_height);
-                    (new_length, false)
-                },
-                DependentLength::FitChildren{default_length} => {
-                    let default_width = convert_length_unit_to_i32(
-                        default_length,
-                        parent_length,
-                        screen_width, 
-                        screen_height);
-                    (default_width, true)
-                },
-            }
-        }
-        let (mut new_width, need_update_width) = convert_dependent_to_i32(
+        
+        let width = convert_bounded_length_to_i32(
             &dimensions.width,
             parent_width,
             screen_width,
             screen_height,
         );
-        let (mut new_height, need_update_height) = convert_dependent_to_i32(
+        let height = convert_bounded_length_to_i32(
             &dimensions.height,
             parent_height,
             screen_width,
             screen_height,
         );
 
-        let new_children: Children<i32, i32> = match self.children{
-            Children::NoChildren => Children::NoChildren,
-            Children::OneChild(child) => {
-                let child = child.calculate_dimensions(new_width, new_height, screen_width, screen_height);
-                Children::OneChild(Box::new(child))
-            }
-            Children::HorizontalLayout(children) => {
-                let new_children = children.into_iter().map(|child| {
-                    child.calculate_dimensions(new_width, new_height, screen_width, screen_height)
-                }).collect::<Vec<_>>();
-                Children::HorizontalLayout(new_children)
-            }
-            Children::VerticalLayout(children) => {
-                let new_children = children.into_iter().map(|child| {
-                    child.calculate_dimensions(new_width, new_height, screen_width, screen_height)
-                }).collect::<Vec<_>>();
-                Children::VerticalLayout(new_children)
-            }
-            Children::GridLayout(children) => {
-                todo!()
-            }
-        };
-        // update width or height based on new children
+        let children: Children<i32, i32> = self.children.calculate_dimensions(
+            width,
+            height,
+            screen_width,
+            screen_height,
+        );
+
+        let margin = [
+            convert_dependent_length_to_i32(&dimensions.margin[0], parent_height, screen_width, screen_height),
+            convert_dependent_length_to_i32(&dimensions.margin[1], parent_width, screen_width, screen_height),
+            convert_dependent_length_to_i32(&dimensions.margin[2], parent_height, screen_width, screen_height),
+            convert_dependent_length_to_i32(&dimensions.margin[3], parent_width, screen_width, screen_height),
+        ];
         let padding = [
-            convert_length_unit_to_i32(&dimensions.padding[0], parent_height, screen_width, screen_height),
-            convert_length_unit_to_i32(&dimensions.padding[1], parent_width, screen_width, screen_height),
-            convert_length_unit_to_i32(&dimensions.padding[2], parent_height, screen_width, screen_height),
-            convert_length_unit_to_i32(&dimensions.padding[3], parent_width, screen_width, screen_height),
+            convert_dependent_length_to_i32(&dimensions.padding[0], parent_height, screen_width, screen_height),
+            convert_dependent_length_to_i32(&dimensions.padding[1], parent_width, screen_width, screen_height),
+            convert_dependent_length_to_i32(&dimensions.padding[2], parent_height, screen_width, screen_height),
+            convert_dependent_length_to_i32(&dimensions.padding[3], parent_width, screen_width, screen_height),
         ];
-        if need_update_width || need_update_height{
-            match &new_children{
-                Children::NoChildren => {
-                    panic!("Specify fit_children while there is no children");
-                }
-                Children::OneChild(child) => {
-                    let child_dimensions = &child.box_model.dimensions;
-                    if need_update_width{
-                        new_width = child_dimensions.width_with_margin() + padding[1] + padding[3]; // margin_left + margin_right
-                    }
-                    if need_update_height{
-                        new_height = child_dimensions.height_with_margin() + padding[0] + padding[2]; // margin_top + margin_bottom
-                    }
-                }
-                Children::HorizontalLayout(children) => {
-                    if need_update_width{
-                        let width_sum: i32 = children.iter().map(|child| {
-                            let child_dimensions = &child.box_model.dimensions;
-                            child_dimensions.width_with_margin() // margin_left + margin_right
-                        }).sum();
-                        new_width = width_sum + padding[1] + padding[3]; // padding_left + padding_right
-                    }
-                    if need_update_height{
-                        let height_max = children.iter().map(|child| {
-                            let child_dimensions = &child.box_model.dimensions;
-                            child_dimensions.height_with_margin() // margin_top + margin_bottom
-                        }).max().unwrap_or_else(||{
-                            println!("Warning: no children found");
-                            0
-                        });
-                        new_height = height_max + padding[0] + padding[2]; // padding_top + padding_bottom
-                    }
-                }
-                Children::VerticalLayout(children) => {
-                    if need_update_height{
-                        let height_sum: i32 = children.iter().map(|child| {
-                            let child_dimensions = &child.box_model.dimensions;
-                            child_dimensions.height_with_margin() // margin_top + margin_bottom
-                        }).sum();
-                        new_height = height_sum + padding[0] + padding[2]; // padding_top + padding_bottom
-                    }
-                    if need_update_width{
-                        let width_max: i32 = children.iter().map(|child| {
-                            let child_dimensions = &child.box_model.dimensions;
-                            child_dimensions.width_with_margin() // margin_left + margin_right
-                        }).max().unwrap_or_else(||{
-                            println!("Warning: no children found");
-                            0
-                        });
-                        new_width = width_max + padding[1] + padding[3]; // padding_left + padding_right
-                    }
-                }
-                Children::GridLayout(children) => {
-                    todo!()
-                }
-            }
-        }
-        let new_margin = [
-            convert_length_unit_to_i32(&dimensions.margin[0], parent_height, screen_width, screen_height),
-            convert_length_unit_to_i32(&dimensions.margin[1], parent_width, screen_width, screen_height),
-            convert_length_unit_to_i32(&dimensions.margin[2], parent_height, screen_width, screen_height),
-            convert_length_unit_to_i32(&dimensions.margin[3], parent_width, screen_width, screen_height),
-        ];
-        let new_padding = [
-            convert_length_unit_to_i32(&dimensions.padding[0], parent_height, screen_width, screen_height),
-            convert_length_unit_to_i32(&dimensions.padding[1], parent_width, screen_width, screen_height),
-            convert_length_unit_to_i32(&dimensions.padding[2], parent_height, screen_width, screen_height),
-            convert_length_unit_to_i32(&dimensions.padding[3], parent_width, screen_width, screen_height),
-        ];
-        let new_dimensions = BoxDimensions::<i32, i32>{
-            width: new_width,
-            height: new_height,
-            margin: new_margin,
-            padding: new_padding,
+        let dimensions = BoxDimensions::<i32, i32>{
+            width,
+            height,
+            margin,
+            padding,
         };
-        let new_box_model = BoxModel{
-            dimensions: new_dimensions,
+        let box_model = BoxModel{
+            dimensions,
             h_alignment: box_model.h_alignment,
             v_alignment: box_model.v_alignment,
             color: box_model.color,
+            uniform_division: box_model.uniform_division,
         };
         UINode {
-            box_model: new_box_model,
-            children: new_children,
+            box_model,
+            children,
             meta: self.meta,
         }
     }

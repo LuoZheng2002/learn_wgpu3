@@ -27,6 +27,7 @@ impl ApplicationHandler for App {
         let window = Arc::new(window);
         self.render_context = Some(RenderContext::new(window.clone()));
         self.window = Some(window);
+        self.state.init();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
