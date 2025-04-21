@@ -8,13 +8,13 @@ use crate::{
     model_data::ModelData,
     model_meta::ModelMeta,
     my_texture::{MyTexture, TextureSource},
-    ui_renderable::{UIRenderable, UIRenderableMeta},
+    ui_renderable::{UIRenderable, TextureMeta},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CacheKey {
     ModelMeta(ModelMeta),
-    UIRenderableMeta(UIRenderableMeta),
+    UIRenderableMeta(TextureMeta),
     Texture(TextureSource),
     Font(String),
     PlaceholderTexture,

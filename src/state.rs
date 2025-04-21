@@ -5,7 +5,7 @@ use either::Either;
 use winit::window;
 
 use crate::{
-    canvas::Canvas, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{Button, Span, SpanDirection, Text, ToUINode}, ui_node::{CanvasPadding, BoundedLength, HorizontalAlignment, DependentLength, VerticalAlignment}, ui_renderable::{UIInstance, UIRenderableMeta}
+    canvas::Canvas, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{Button, Span, SpanDirection, Text, ToUINode}, ui_node::{CanvasPadding, BoundedLength, HorizontalAlignment, DependentLength, VerticalAlignment}, ui_renderable::{UIInstance, TextureMeta}
 };
 
 // model path,
@@ -20,7 +20,7 @@ pub struct State {
     pub accumulated_frame_num: u32,
     pub model_render_submissions: HashMap<ModelMeta, Vec<ModelInstance>>,
     // use Arc here because we need to map the container to another container
-    pub ui_render_submissions: HashMap<UIRenderableMeta, Vec<UIInstance>>,
+    pub ui_render_submissions: HashMap<TextureMeta, Vec<UIInstance>>,
     pub light_position: cgmath::Vector3<f32>,
     pub fps: u32,
     pub canvas: Option<Canvas>,
@@ -33,7 +33,7 @@ impl State {
             .or_insert_with(|| Vec::new())
             .push(instance);
     }
-    fn submit_ui_renderable(&mut self, ui_meta: UIRenderableMeta, instance: UIInstance) {
+    fn submit_ui_renderable(&mut self, ui_meta: TextureMeta, instance: UIInstance) {
         self.ui_render_submissions
             .entry(ui_meta)
             .or_insert_with(|| Vec::new())
@@ -140,6 +140,7 @@ impl State {
         // self.submit_ui_renderable(ui_meta1, ui_instance1);
 
         
+        // to do
         let screen_width = window_size.width;
         let screen_height = window_size.height;
         let ui_renderables = self.canvas.as_ref().unwrap().to_ui_renderables(

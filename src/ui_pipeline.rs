@@ -7,7 +7,7 @@ use wgpu::{RenderPipeline, util::DeviceExt};
 
 use crate::{
     my_texture::MyTexture,
-    ui_renderable::{SortOrder, UIInstance, UIInstanceRaw, UIRenderable},
+    ui_renderable::{UIInstance, UIInstanceRaw, UIRenderable},
 };
 
 // model
@@ -112,13 +112,14 @@ impl UIPipeline {
                 // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: MyTexture::DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual, // 1.
-                stencil: wgpu::StencilState::default(),          // 2.
-                bias: wgpu::DepthBiasState::default(),
-            }), // 1.
+            depth_stencil: None,
+            // Some(wgpu::DepthStencilState {
+            //     format: MyTexture::DEPTH_FORMAT,
+            //     depth_write_enabled: true,
+            //     depth_compare: wgpu::CompareFunction::LessEqual, // 1.
+            //     stencil: wgpu::StencilState::default(),          // 2.
+            //     bias: wgpu::DepthBiasState::default(),
+            // }), // 1.
             multisample: wgpu::MultisampleState {
                 count: 1,                         // 2.
                 mask: !0,                         // 3.
@@ -153,18 +154,18 @@ impl UIPipeline {
                 store: wgpu::StoreOp::Store,
             },
         });
-        let depth_stencil_attachment = wgpu::RenderPassDepthStencilAttachment {
-            view: depth_view,
-            depth_ops: Some(wgpu::Operations {
-                load: wgpu::LoadOp::Clear(1.0),
-                store: wgpu::StoreOp::Store,
-            }),
-            stencil_ops: None,
-        };
+        // let depth_stencil_attachment = wgpu::RenderPassDepthStencilAttachment {
+        //     view: depth_view,
+        //     depth_ops: Some(wgpu::Operations {
+        //         load: wgpu::LoadOp::Clear(1.0),
+        //         store: wgpu::StoreOp::Store,
+        //     }),
+        //     stencil_ops: None,
+        // };
         let render_pass_descriptor = wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[color_attachment],
-            depth_stencil_attachment: Some(depth_stencil_attachment),
+            depth_stencil_attachment: None, // Some(depth_stencil_attachment),
             occlusion_query_set: None,
             timestamp_writes: None,
         };
@@ -190,17 +191,6 @@ impl UIPipeline {
         depth_view: &wgpu::TextureView, // use depth to sort
         index_buffer: &wgpu::Buffer,
     ) {
-        let mut sort_orders = BTreeSet::<SortOrder>::new();
-        for (_, instances) in renderables.iter() {
-            for instance in instances.iter() {
-                sort_orders.insert(instance.sort_order);
-            }
-        }
-        let sort_order_to_depth = sort_orders
-            .iter()
-            .enumerate()
-            .map(|(i, sort_order)| (sort_order.clone(), 1.0 - i as f32 / sort_orders.len() as f32))
-            .collect::<std::collections::HashMap<_, _>>();
         // begin render pass
         let mut render_pass = self.create_render_pass(encoder, color_view, depth_view);
         render_pass.set_pipeline(&self.pipeline);
@@ -210,7 +200,7 @@ impl UIPipeline {
             render_pass.set_bind_group(0, &ui_renderable.material_bind_group, &[]);
             let instance_data = instances
                 .iter()
-                .map(|instance| instance.to_raw(&sort_order_to_depth))
+                .map(|instance| instance.to_raw())
                 .collect::<Vec<_>>();
             let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Instance Buffer"),

@@ -22,6 +22,15 @@ pub enum TextureSource {
         character: char,
         font_file_path: String,
     },
+    PureColor{
+        red: u8,
+        green: u8,
+        blue: u8,
+    },
+    UI{
+        version: u64,
+        id: u64,
+    }
 }
 
 impl MyTexture {
@@ -127,6 +136,9 @@ impl MyTexture {
                 character,
                 font_file_path,
             } => Self::load_image_from_text_character(character, font_file_path),
+            _ => {
+                panic!("Unsupported texture source");
+            }
         };
         let my_texture = Self::from_image(&img, device, queue);
         Ok(my_texture)
