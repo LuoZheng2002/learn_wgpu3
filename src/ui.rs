@@ -3,7 +3,7 @@
 // an element can have: zero children, one child, or many children
 
 use either::Either;
-use rusttype::{Font, Point, Rect, point};
+use rusttype::Font;
 
 use crate::{
     cache::{CacheValue, get_font},

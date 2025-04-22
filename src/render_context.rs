@@ -73,12 +73,13 @@ impl RenderContext {
         // Shader code in this tutorial assumes an sRGB surface texture. Using a different
         // one will result in all the colors coming out darker. If you want to support non
         // sRGB surfaces, you'll need to account for that when drawing to the frame.
-        let surface_format = surface_caps
-            .formats
-            .iter()
-            .find(|f| f.is_srgb())
-            .copied()
-            .unwrap_or(surface_caps.formats[0]);
+        // let surface_format = surface_caps
+        //     .formats
+        //     .iter()
+        //     .find(|f| f.is_srgb())
+        //     .copied()
+        //     .unwrap_or(surface_caps.formats[0]);
+        let surface_format = wgpu::TextureFormat::Rgba8UnormSrgb;
         // define how the surface creates its underlying SurfaceTextures
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -266,6 +267,7 @@ impl RenderContext {
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+        // panic!("render");
         Ok(())
     }
 }

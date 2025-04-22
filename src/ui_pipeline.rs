@@ -1,15 +1,15 @@
 // it contains a RenderPipeline, can store drawables, and render them
 // different pipelines have different binding requirements, so the model types are different
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use wgpu::{RenderPipeline, util::DeviceExt};
 
 use crate::{
-    cache::{CACHE, CacheKey, CacheValue},
+    cache::{CacheKey, CacheValue, CACHE},
     my_texture::{MyTexture, TextureSource},
     ui_node::UIRenderInstruction,
-    ui_renderable::{UIInstance, UIInstanceRaw, UIRenderable},
+    ui_renderable::{create_placeholder_texture, UIInstance, UIInstanceRaw},
 };
 
 // model
@@ -193,6 +193,7 @@ impl UIPipeline {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) {
+        println!("enter render_helper");
         let version = render_instruction.version;
         let id = render_instruction.id;
         let child_texture =
@@ -207,6 +208,7 @@ impl UIPipeline {
                 );
                 // call the sub instructions before rendering the child texture so that they are queued first
                 for sub_instruction in render_instruction.sub_instructions {
+                    println!("executing sub instruction");
                     self.render_helper(sub_instruction, &texture.view, encoder, device, queue);
                 }
                 // queue the rendering of the child texture
@@ -234,6 +236,7 @@ impl UIPipeline {
                 render_pass.set_vertex_buffer(0, instance_buffer.slice(..));
                 render_pass.draw_indexed(0..6, 0, 0..1);
                 drop(render_pass);
+                println!("submit rendering child texture");
                 Arc::new(CacheValue::Texture(texture))
             });
         let child_texture = match child_texture.as_ref() {
@@ -242,8 +245,9 @@ impl UIPipeline {
         };
         let normalized_location_left = render_instruction.location_left * 2.0 - 1.0;
         let normalized_location_right = render_instruction.location_right * 2.0 - 1.0;
-        let normalized_location_top = render_instruction.location_top * 2.0 - 1.0;
-        let normalized_location_bottom = render_instruction.location_bottom * 2.0 - 1.0;
+        let normalized_location_top = -(render_instruction.location_top * 2.0 - 1.0);
+        let normalized_location_bottom = -(render_instruction.location_bottom * 2.0 - 1.0);
+        println!("normalized location: {}, {}, {}, {}", normalized_location_left, normalized_location_top, normalized_location_right, normalized_location_bottom);
         let ui_instance = UIInstance {
             location_left: normalized_location_left,
             location_top: normalized_location_top,
@@ -255,6 +259,14 @@ impl UIPipeline {
             contents: bytemuck::cast_slice(&[ui_instance.to_raw()]),
             usage: wgpu::BufferUsages::VERTEX,
         });
+        // tmp
+        // let placeholder_texture = CACHE.get_with(CacheKey::Texture(TextureSource::FilePath("assets/placehoder.png".into())),||{
+        //     create_placeholder_texture(device, queue)
+        // });
+        // let placeholder_texture = match placeholder_texture.as_ref() {
+        //     CacheValue::Texture(texture) => texture,
+        //     _ => unreachable!(),
+        // };
         let mut render_pass = Self::create_render_pass(encoder, parent_texture_view.into());
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
@@ -265,6 +277,7 @@ impl UIPipeline {
         );
         render_pass.set_vertex_buffer(0, instance_buffer.slice(..));
         render_pass.draw_indexed(0..6, 0, 0..1);
+        println!("submit rendering parent texture");
     }
     pub fn render(
         &self,

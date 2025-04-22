@@ -1,6 +1,4 @@
 use learn_wgpu3::app::App;
-use learn_wgpu3::cache::{CacheValue, get_font};
-use learn_wgpu3::ui::{Char, ToUINode};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 fn main() {

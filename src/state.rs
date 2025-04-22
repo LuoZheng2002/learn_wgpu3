@@ -2,7 +2,6 @@ use std::{collections::HashMap, time::Instant};
 
 use cgmath::{Euler, Quaternion};
 use either::Either;
-use winit::window;
 
 use crate::{
     model_instance::ModelInstance,
@@ -12,7 +11,6 @@ use crate::{
     ui_node::{
         BoundedLength, HorizontalAlignment, RelativeLength, UIRenderInstruction, VerticalAlignment,
     },
-    ui_renderable::{TextureMeta, UIInstance},
 };
 
 // model path,
@@ -89,7 +87,7 @@ impl State {
             VerticalAlignment::Top,
             true,
         );
-        // span.push_child(Box::new(text));
+        span.push_child(Box::new(text));
         // span.push_child(Box::new(button));
         self.canvas = Some(span);
     }

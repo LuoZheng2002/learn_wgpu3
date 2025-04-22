@@ -7,11 +7,11 @@
 // padding, margin, children
 // width, height,
 
-use std::{collections::HashMap, default, i32, ops::Bound, vec};
+use std::{i32, vec};
 
 use either::Either;
 
-use crate::ui_renderable::{TextureMeta, UIInstance};
+use crate::ui_renderable::TextureMeta;
 
 #[derive(Clone)]
 pub enum HorizontalAlignment {
@@ -780,10 +780,10 @@ impl UINode<BoxDimensionsAbsolute, ChildrenAreCells> {
             id: 0,      // to do
             texture_width,
             texture_height,
-            location_left,
             location_top,
-            location_right,
+            location_left,
             location_bottom,
+            location_right,
             sub_instructions,
             texture_meta: meta.clone(),
         }

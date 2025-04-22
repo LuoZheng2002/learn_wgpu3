@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     cache::{CACHE, CacheKey, CacheValue},
