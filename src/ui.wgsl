@@ -8,8 +8,17 @@ const tex_coords_array = array<vec2<f32>, 6>(
     vec2<f32>(0.0, 0.0),
     vec2<f32>(1.0, 0.0)
 );
+const tex_coords_array_flipped = array<vec2<f32>, 6>(
+    vec2<f32>(0.0, 1.0),     
+    vec2<f32>(1.0, 1.0),
+    vec2<f32>(1.0, 0.0),
+    vec2<f32>(0.0, 1.0),    
+    vec2<f32>(1.0, 0.0),
+    vec2<f32>(0.0, 0.0)
+);
 struct InstanceInput{
     @location(0) location: vec4<f32>,
+    @location(1) flip_vertically: u32
 }
 
 struct VertexOutput{
@@ -31,11 +40,14 @@ fn vs_main(
     // let top = 0.5;
     // let bottom = -0.5;
     var out: VertexOutput;
-    let tex_coords = tex_coords_array[vertex_index];
+    let tex_coords = select(tex_coords_array[vertex_index], tex_coords_array_flipped[vertex_index],instance.flip_vertically == 1);
     out.tex_coords = tex_coords;
     // select: false, true, bool
     let x = select(right, left, tex_coords.x == 0.0);
-    let y = select(top, bottom, tex_coords.y == 0.0);
+    var y = select(top, bottom, tex_coords.y == 0.0);
+    if instance.flip_vertically == 1{
+        y = -y;
+    }
     out.clip_position = vec4<f32>(x, y, 0.0, 1.0);
     return out;
 }

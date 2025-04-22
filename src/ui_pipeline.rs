@@ -192,6 +192,7 @@ impl UIPipeline {
         parent_texture_view: impl Into<&'a wgpu::TextureView>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        render_to_screen: bool,
     ) {
         println!("enter render_helper");
         let version = render_instruction.version;
@@ -230,6 +231,7 @@ impl UIPipeline {
                     location_right: 1.0,
                     location_top: 1.0,
                     location_bottom: -1.0,
+                    flip_vertically: true, // render to texture
                 };
                 let instance_buffer =
                     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -245,7 +247,7 @@ impl UIPipeline {
                 // call the sub instructions before rendering the child texture so that they are queued first
                 for sub_instruction in render_instruction.sub_instructions {
                     println!("executing sub instruction");
-                    self.render_helper(encoder, sub_instruction, &texture.view, device, queue);
+                    self.render_helper(encoder, sub_instruction, &texture.view, device, queue, false);
                 }
                 let result = Arc::new(CacheValue::Texture(texture));
                 CACHE.insert(
@@ -275,6 +277,7 @@ impl UIPipeline {
             location_top: normalized_location_top,
             location_right: normalized_location_right,
             location_bottom: normalized_location_bottom,
+            flip_vertically: !render_to_screen,
         };
         println!("normalized location: {}, {}, {}, {}", normalized_location_left, normalized_location_top, normalized_location_right, normalized_location_bottom);
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -323,7 +326,7 @@ impl UIPipeline {
         // depth_view: &wgpu::TextureView, // use depth to sort
     ) {
         for render_instruction in render_instructions {
-            self.render_helper(encoder, render_instruction, color_view, device, queue);
+            self.render_helper(encoder, render_instruction, color_view, device, queue, true);
         }
 
         // begin render pass

@@ -113,6 +113,7 @@ pub struct UIInstance {
     pub location_top: f32,
     pub location_right: f32,
     pub location_bottom: f32,
+    pub flip_vertically: bool,
 }
 
 impl UIInstance {
@@ -124,6 +125,7 @@ impl UIInstance {
                 self.location_right,
                 self.location_bottom,
             ],
+            flip_vertically: if self.flip_vertically { 1 } else { 0 },
         }
     }
 }
@@ -133,10 +135,11 @@ impl UIInstance {
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UIInstanceRaw {
     pub location: [f32; 4],
+    pub flip_vertically: u32,
 }
 
 impl UIInstanceRaw {
-    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x4];
+    const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![0 => Float32x4, 1 => Uint32];
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         use std::mem;
 
