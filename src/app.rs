@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use winit::{
-    application::ApplicationHandler,
-    event::WindowEvent,
-    event_loop::ActiveEventLoop,
-    window::{Window, WindowId},
+    application::ApplicationHandler, dpi::LogicalPosition, event::WindowEvent, event_loop::ActiveEventLoop, window::{Window, WindowAttributes, WindowId}
 };
 
 use crate::{render_context::RenderContext, state::State};
@@ -18,8 +15,11 @@ pub struct App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let attributes = WindowAttributes::default().with_inner_size(
+            winit::dpi::LogicalSize::new(800.0, 600.0),
+        ).with_position(LogicalPosition::new(0, 0));
         let window = event_loop
-            .create_window(Window::default_attributes())
+            .create_window(attributes)
             .unwrap();
         let window = Arc::new(window);
         self.render_context = Some(RenderContext::new(window.clone()));

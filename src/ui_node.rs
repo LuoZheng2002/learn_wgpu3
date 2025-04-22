@@ -488,7 +488,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             content: node.flatten_children(),
         };
         let cell_meta = TextureMeta::Texture {
-            path: "assets/placeholder.png".into(),
+            path: "assets/piggies.webp".into(),
         }; // to do
         UINode {
             box_dimensions: cell_dimensions,

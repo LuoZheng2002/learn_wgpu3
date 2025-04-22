@@ -1,7 +1,7 @@
 use std::{collections::HashMap, mem, sync::Arc};
 
 use tokio::runtime::Runtime;
-use wgpu::{CompositeAlphaMode, util::DeviceExt};
+use wgpu::{core::device, util::DeviceExt, CompositeAlphaMode};
 use winit::window::Window;
 
 use crate::{
@@ -65,7 +65,7 @@ impl RenderContext {
                     label: None,
                     memory_hints: Default::default(),
                 },
-                None, // Trace path
+                None // Trace path
             ))
             .unwrap();
 
@@ -225,49 +225,30 @@ impl RenderContext {
             &self.depth_texture.view,
             &self.camera_bind_group,
         );
-        // let ui_render_submissions = mem::take(&mut state.ui_render_submissions);
-        // let ui_render_submissions = ui_render_submissions
-        //     .into_iter()
-        //     .map(|(ui_meta, instances)| (ui_meta, Arc::new(instances)))
-        //     .collect::<HashMap<_, _>>();
-
-        // let ui_renderables = ui_render_submissions
-        //     .iter()
-        //     .map(|(ui_meta, instances)| {
-        //         let ui_renderable =
-        //             CACHE.get_with(CacheKey::UIRenderableMeta(ui_meta.clone()), || {
-        //                 let ui_renderable =
-        //                     ui_meta.to_ui_renderable(&self.device, &self.queue, &self.ui_pipeline);
-        //                 Arc::new(CacheValue::UIRenderable(ui_renderable))
-        //             });
-        //         (ui_renderable, instances.clone())
-        //     })
-        //     .collect::<Vec<_>>();
-        // let ui_renderables = ui_renderables
-        //     .iter()
-        //     .map(|(ui_meta, instances)| {
-        //         let ui_renderable = match ui_meta.as_ref() {
-        //             CacheValue::UIRenderable(ui_renderable) => ui_renderable,
-        //             _ => unreachable!(),
-        //         };
-        //         (ui_renderable, instances.clone())
-        //     })
-        //     .collect::<Vec<_>>();
+        
         let ui_render_instructions = mem::take(&mut state.ui_render_instructions);
+        assert!(ui_render_instructions.len() == 1);
         assert!(state.ui_render_instructions.is_empty());
         self.ui_pipeline.render(
-            ui_render_instructions,
             &mut encoder,
+            ui_render_instructions,
             &self.device,
             &self.queue,
             &view,
             // &self.depth_texture.view,
         );
-
         // submit will accept anything that implements IntoIter
-        self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
+        
+        // std::thread::sleep(std::time::Duration::from_millis(500));
+    //     let mut input = String::new();
+    // std::io::stdin()
+    //     .read_line(&mut input)
+    //     .expect("Failed to read line");
         // panic!("render");
+        self.queue.submit(std::iter::once(encoder.finish()));
+        self.device.poll(wgpu::Maintain::Wait);
+        output.present();
+        println!("present");
         Ok(())
     }
 }

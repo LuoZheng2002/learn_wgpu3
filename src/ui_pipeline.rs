@@ -1,7 +1,7 @@
 // it contains a RenderPipeline, can store drawables, and render them
 // different pipelines have different binding requirements, so the model types are different
 
-use std::sync::Arc;
+use std::{path::Iter, sync::Arc};
 
 use wgpu::{RenderPipeline, util::DeviceExt};
 
@@ -187,17 +187,25 @@ impl UIPipeline {
     /// render_helper renders the texture specified by render_instruction to the outer texture
     pub fn render_helper<'a>(
         &self,
+        encoder: &mut wgpu::CommandEncoder,
         render_instruction: UIRenderInstruction,
         parent_texture_view: impl Into<&'a wgpu::TextureView>,
-        encoder: &mut wgpu::CommandEncoder,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) {
         println!("enter render_helper");
         let version = render_instruction.version;
         let id = render_instruction.id;
-        let child_texture =
-            CACHE.get_with(CacheKey::Texture(TextureSource::UI { version, id }), || {
+        // if there is no child texture in the cache,
+        // create the blank texture and execute the sub instructions
+        // tmp
+        // let child_texture = CACHE.get(&CacheKey::Texture(TextureSource::UI { version, id }));
+        let child_texture = None;
+        let child_texture = match child_texture {
+            Some(child_texture) => {
+                child_texture
+            }
+            None => {
                 let texture_width = render_instruction.texture_width;
                 let texture_height = render_instruction.texture_height;
                 let texture = MyTexture::create_render_attachment_texture(
@@ -206,11 +214,7 @@ impl UIPipeline {
                     texture_height,
                     Some("ui_texture"),
                 );
-                // call the sub instructions before rendering the child texture so that they are queued first
-                for sub_instruction in render_instruction.sub_instructions {
-                    println!("executing sub instruction");
-                    self.render_helper(sub_instruction, &texture.view, encoder, device, queue);
-                }
+                
                 // queue the rendering of the child texture
                 let mut render_pass = Self::create_render_pass(encoder, &texture.view);
                 render_pass.set_pipeline(&self.pipeline);
@@ -236,9 +240,22 @@ impl UIPipeline {
                 render_pass.set_vertex_buffer(0, instance_buffer.slice(..));
                 render_pass.draw_indexed(0..6, 0, 0..1);
                 drop(render_pass);
+                // device.poll(wgpu::Maintain::Wait);
                 println!("submit rendering child texture");
-                Arc::new(CacheValue::Texture(texture))
-            });
+                // call the sub instructions before rendering the child texture so that they are queued first
+                for sub_instruction in render_instruction.sub_instructions {
+                    println!("executing sub instruction");
+                    self.render_helper(encoder, sub_instruction, &texture.view, device, queue);
+                }
+                let result = Arc::new(CacheValue::Texture(texture));
+                CACHE.insert(
+                    CacheKey::Texture(TextureSource::UI { version, id }),
+                    result.clone(),
+                );
+                
+                result
+            }            
+        };
         let child_texture = match child_texture.as_ref() {
             CacheValue::Texture(texture) => texture,
             _ => unreachable!(),
@@ -247,26 +264,39 @@ impl UIPipeline {
         let normalized_location_right = render_instruction.location_right * 2.0 - 1.0;
         let normalized_location_top = -(render_instruction.location_top * 2.0 - 1.0);
         let normalized_location_bottom = -(render_instruction.location_bottom * 2.0 - 1.0);
-        println!("normalized location: {}, {}, {}, {}", normalized_location_left, normalized_location_top, normalized_location_right, normalized_location_bottom);
+
+        // let normalized_location_left = -0.5;
+        // let normalized_location_right = 0.5;
+        // let normalized_location_top = 0.5;
+        // let normalized_location_bottom = -0.5;
+        
         let ui_instance = UIInstance {
             location_left: normalized_location_left,
             location_top: normalized_location_top,
             location_right: normalized_location_right,
             location_bottom: normalized_location_bottom,
         };
+        println!("normalized location: {}, {}, {}, {}", normalized_location_left, normalized_location_top, normalized_location_right, normalized_location_bottom);
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance Buffer"),
             contents: bytemuck::cast_slice(&[ui_instance.to_raw()]),
             usage: wgpu::BufferUsages::VERTEX,
         });
         // tmp
-        // let placeholder_texture = CACHE.get_with(CacheKey::Texture(TextureSource::FilePath("assets/placehoder.png".into())),||{
-        //     create_placeholder_texture(device, queue)
-        // });
+        // let placeholder_texture = CACHE.get_with(
+        //     CacheKey::PlaceholderTexture,
+        //     || {
+        //         let texture = MyTexture::load(TextureSource::FilePath("assets/piggies.webp".into()), device, queue).unwrap();
+        //         Arc::new(CacheValue::Texture(texture))
+        //     },
+        // );
         // let placeholder_texture = match placeholder_texture.as_ref() {
         //     CacheValue::Texture(texture) => texture,
         //     _ => unreachable!(),
         // };
+
+
+
         let mut render_pass = Self::create_render_pass(encoder, parent_texture_view.into());
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
@@ -278,18 +308,22 @@ impl UIPipeline {
         render_pass.set_vertex_buffer(0, instance_buffer.slice(..));
         render_pass.draw_indexed(0..6, 0, 0..1);
         println!("submit rendering parent texture");
+        drop(render_pass);
+
+
+        // device.poll(wgpu::Maintain::Wait);
     }
     pub fn render(
         &self,
-        render_instructions: Vec<UIRenderInstruction>,
         encoder: &mut wgpu::CommandEncoder,
+        render_instructions: Vec<UIRenderInstruction>,       
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         color_view: &wgpu::TextureView,
         // depth_view: &wgpu::TextureView, // use depth to sort
     ) {
         for render_instruction in render_instructions {
-            self.render_helper(render_instruction, color_view, encoder, device, queue);
+            self.render_helper(encoder, render_instruction, color_view, device, queue);
         }
 
         // begin render pass

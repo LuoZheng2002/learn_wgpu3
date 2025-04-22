@@ -15,8 +15,6 @@ struct InstanceInput{
 struct VertexOutput{
     @builtin(position) clip_position: vec4<f32>,
     @location(0) tex_coords: vec2<f32>,
-    @location(1) color: vec4<f32>,
-    @location(2) use_texture: u32,
 }
 
 @vertex
@@ -28,6 +26,10 @@ fn vs_main(
     let top = instance.location.y;
     let right = instance.location.z;
     let bottom = instance.location.w;
+    // let left = -0.5;
+    // let right = 0.5;
+    // let top = 0.5;
+    // let bottom = -0.5;
     var out: VertexOutput;
     let tex_coords = tex_coords_array[vertex_index];
     out.tex_coords = tex_coords;

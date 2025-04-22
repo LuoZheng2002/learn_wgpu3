@@ -253,6 +253,7 @@ pub struct Span {
     pub h_alignment: HorizontalAlignment,
     pub v_alignment: VerticalAlignment,
     pub uniform_division: bool,
+    pub texture: TextureMeta,
 }
 
 impl Span {
@@ -265,6 +266,7 @@ impl Span {
         h_alignment: HorizontalAlignment,
         v_alignment: VerticalAlignment,
         uniform_division: bool,
+        texture: TextureMeta,
     ) -> Self {
         let margin = match margin {
             Either::Left(m) => [m.clone(), m.clone(), m.clone(), m.clone()],
@@ -287,6 +289,7 @@ impl Span {
             h_alignment,
             v_alignment,
             uniform_division,
+            texture,
         }
     }
     pub fn push_child(&mut self, child: Box<dyn ToUINode>) {
@@ -319,9 +322,7 @@ impl ToUINode for Span {
                     children: children_ui_nodes,
                 },
             },
-            meta: TextureMeta::Texture {
-                path: "assets/placeholder.png".into(),
-            },
+            meta: self.texture.clone(),
         }
     }
 }

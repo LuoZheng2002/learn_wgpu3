@@ -10,7 +10,7 @@ use crate::{
     ui::{Button, Span, SpanDirection, Text, ToUINode},
     ui_node::{
         BoundedLength, HorizontalAlignment, RelativeLength, UIRenderInstruction, VerticalAlignment,
-    },
+    }, ui_renderable::TextureMeta,
 };
 
 // model path,
@@ -51,7 +51,8 @@ impl State {
 
     pub fn init(&mut self) {
         let text = Text::new(
-            format!("fps: {}", self.fps).to_string(),
+            // format!("fps: {}", self.fps).to_string(),
+            "".into(),
             "assets/times.ttf".to_string(),
             50.0,
             Either::Left(RelativeLength::Pixels(0)),
@@ -77,17 +78,41 @@ impl State {
                 w: 1.0,
             },
         );
+        let span2 = Span::new(
+            SpanDirection::Horizontal,
+            BoundedLength::fixed_pixels(80),
+            BoundedLength::fixed_pixels(60),
+            Either::Left(RelativeLength::Pixels(3)),
+            Either::Left(RelativeLength::Pixels(3)),
+            HorizontalAlignment::Left,
+            VerticalAlignment::Top,
+            true,
+            TextureMeta::Texture { path: "assets/grass.jpg".into() }
+        );
+        let span3 = Span::new(
+            SpanDirection::Horizontal,
+            BoundedLength::fixed_pixels(80),
+            BoundedLength::fixed_pixels(60),
+            Either::Left(RelativeLength::Pixels(3)),
+            Either::Left(RelativeLength::Pixels(3)),
+            HorizontalAlignment::Left,
+            VerticalAlignment::Top,
+            true,
+            TextureMeta::Texture { path: "assets/grass.jpg".into() }
+        );
         let mut span = Span::new(
-            SpanDirection::Vertical,
-            BoundedLength::fixed_pixels(1000),
-            BoundedLength::fixed_pixels(800),
-            Either::Left(RelativeLength::Pixels(20)),
+            SpanDirection::Horizontal,
+            BoundedLength::fixed_dependent(RelativeLength::RelativeScreenWidth(0.5)),
+            BoundedLength::fixed_dependent(RelativeLength::RelativeScreenHeight(0.5)),
+            Either::Left(RelativeLength::Pixels(3)),
             Either::Left(RelativeLength::Pixels(20)),
             HorizontalAlignment::Left,
             VerticalAlignment::Top,
             true,
+            TextureMeta::Texture { path: "assets/genshin.jpg".into() }
         );
-        span.push_child(Box::new(text));
+        span.push_child(Box::new(span2));
+        span.push_child(Box::new(span3));
         // span.push_child(Box::new(button));
         self.canvas = Some(span);
     }
