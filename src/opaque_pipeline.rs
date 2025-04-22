@@ -238,7 +238,7 @@ impl OpaquePipeline {
     }
 
     pub fn render(
-        &mut self,
+        &self,
         // Use Vec because MyMesh is not hashable, use Arc because it has to move to a new container to mismatch with instances
         renderables: &Vec<(Arc<MyMesh>, Arc<Vec<ModelInstance>>)>,
         encoder: &mut wgpu::CommandEncoder,

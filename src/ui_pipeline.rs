@@ -6,7 +6,9 @@ use std::{collections::BTreeSet, sync::Arc};
 use wgpu::{RenderPipeline, util::DeviceExt};
 
 use crate::{
-    my_texture::MyTexture,
+    cache::{CACHE, CacheKey, CacheValue},
+    my_texture::{MyTexture, TextureSource},
+    ui_node::UIRenderInstruction,
     ui_renderable::{UIInstance, UIInstanceRaw, UIRenderable},
 };
 
@@ -15,6 +17,7 @@ use crate::{
 pub struct UIPipeline {
     pub pipeline: RenderPipeline,
     pub material_bind_group_layout: wgpu::BindGroupLayout,
+    pub index_buffer: wgpu::Buffer,
 }
 
 impl UIPipeline {
@@ -44,7 +47,7 @@ impl UIPipeline {
     pub fn create_material_bind_group(
         &self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        // queue: &wgpu::Queue,
         texture: &MyTexture,
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -134,17 +137,18 @@ impl UIPipeline {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
         let material_bind_group_layout = Self::create_material_bind_group_layout(device);
         let pipeline = Self::create_pipeline(device, config, &material_bind_group_layout);
+        let index_buffer = Self::create_index_buffer(device);
         Self {
             pipeline,
             material_bind_group_layout,
+            index_buffer,
         }
     }
 
     fn create_render_pass<'a>(
-        &self,
         encoder: &'a mut wgpu::CommandEncoder,
         color_view: &'a wgpu::TextureView,
-        depth_view: &'a wgpu::TextureView,
+        // depth_view: &'a wgpu::TextureView,
     ) -> wgpu::RenderPass<'a> {
         let color_attachment = Some(wgpu::RenderPassColorAttachment {
             view: &color_view,
@@ -180,35 +184,119 @@ impl UIPipeline {
             usage: wgpu::BufferUsages::INDEX,
         })
     }
-
+    /// render_helper renders the texture specified by render_instruction to the outer texture
+    pub fn render_helper<'a>(
+        &self,
+        render_instruction: UIRenderInstruction,
+        parent_texture_view: impl Into<&'a wgpu::TextureView>,
+        encoder: &mut wgpu::CommandEncoder,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) {
+        let version = render_instruction.version;
+        let id = render_instruction.id;
+        let child_texture =
+            CACHE.get_with(CacheKey::Texture(TextureSource::UI { version, id }), || {
+                let texture_width = render_instruction.texture_width;
+                let texture_height = render_instruction.texture_height;
+                let texture = MyTexture::create_render_attachment_texture(
+                    device,
+                    texture_width,
+                    texture_height,
+                    Some("ui_texture"),
+                );
+                // call the sub instructions before rendering the child texture so that they are queued first
+                for sub_instruction in render_instruction.sub_instructions {
+                    self.render_helper(sub_instruction, &texture.view, encoder, device, queue);
+                }
+                // queue the rendering of the child texture
+                let mut render_pass = Self::create_render_pass(encoder, &texture.view);
+                render_pass.set_pipeline(&self.pipeline);
+                render_pass
+                    .set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                let ui_renderable = render_instruction
+                    .texture_meta
+                    .to_ui_renderable(device, queue, self);
+                let material_bind_group = ui_renderable.material_bind_group;
+                render_pass.set_bind_group(0, &material_bind_group, &[]);
+                let ui_instance = UIInstance {
+                    location_left: -1.0,
+                    location_right: 1.0,
+                    location_top: 1.0,
+                    location_bottom: -1.0,
+                };
+                let instance_buffer =
+                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("Instance Buffer"),
+                        contents: bytemuck::cast_slice(&[ui_instance.to_raw()]),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                render_pass.set_vertex_buffer(0, instance_buffer.slice(..));
+                render_pass.draw_indexed(0..6, 0, 0..1);
+                drop(render_pass);
+                Arc::new(CacheValue::Texture(texture))
+            });
+        let child_texture = match child_texture.as_ref() {
+            CacheValue::Texture(texture) => texture,
+            _ => unreachable!(),
+        };
+        let normalized_location_left = render_instruction.location_left * 2.0 - 1.0;
+        let normalized_location_right = render_instruction.location_right * 2.0 - 1.0;
+        let normalized_location_top = render_instruction.location_top * 2.0 - 1.0;
+        let normalized_location_bottom = render_instruction.location_bottom * 2.0 - 1.0;
+        let ui_instance = UIInstance {
+            location_left: normalized_location_left,
+            location_top: normalized_location_top,
+            location_right: normalized_location_right,
+            location_bottom: normalized_location_bottom,
+        };
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&[ui_instance.to_raw()]),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let mut render_pass = Self::create_render_pass(encoder, parent_texture_view.into());
+        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.set_bind_group(
+            0,
+            &self.create_material_bind_group(device, child_texture),
+            &[],
+        );
+        render_pass.set_vertex_buffer(0, instance_buffer.slice(..));
+        render_pass.draw_indexed(0..6, 0, 0..1);
+    }
     pub fn render(
-        &mut self,
-        renderables: &Vec<(&UIRenderable, Arc<Vec<UIInstance>>)>,
+        &self,
+        render_instructions: Vec<UIRenderInstruction>,
         encoder: &mut wgpu::CommandEncoder,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         color_view: &wgpu::TextureView,
-        depth_view: &wgpu::TextureView, // use depth to sort
-        index_buffer: &wgpu::Buffer,
+        // depth_view: &wgpu::TextureView, // use depth to sort
     ) {
-        // begin render pass
-        let mut render_pass = self.create_render_pass(encoder, color_view, depth_view);
-        render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        //needs a texture bind group from the model
-        for (ui_renderable, instances) in renderables.iter() {
-            render_pass.set_bind_group(0, &ui_renderable.material_bind_group, &[]);
-            let instance_data = instances
-                .iter()
-                .map(|instance| instance.to_raw())
-                .collect::<Vec<_>>();
-            let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Instance Buffer"),
-                contents: bytemuck::cast_slice(&instance_data),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-            render_pass.set_vertex_buffer(0, instance_buffer.slice(..));
-            render_pass.draw_indexed(0..6, 0, 0..instances.len() as u32);
+        for render_instruction in render_instructions {
+            self.render_helper(render_instruction, color_view, encoder, device, queue);
         }
+
+        // begin render pass
+        // let mut render_pass = self.create_render_pass(encoder, color_view, depth_view);
+        // render_pass.set_pipeline(&self.pipeline);
+        // render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        // //needs a texture bind group from the model
+        // for (ui_renderable, instances) in renderables.iter() {
+        //     render_pass.set_bind_group(0, &ui_renderable.material_bind_group, &[]);
+        //     let instance_data = instances
+        //         .iter()
+        //         .map(|instance| instance.to_raw())
+        //         .collect::<Vec<_>>();
+        //     let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //         label: Some("Instance Buffer"),
+        //         contents: bytemuck::cast_slice(&instance_data),
+        //         usage: wgpu::BufferUsages::VERTEX,
+        //     });
+        //     render_pass.set_vertex_buffer(0, instance_buffer.slice(..));
+        //     render_pass.draw_indexed(0..6, 0, 0..instances.len() as u32);
+        // }
     }
 }

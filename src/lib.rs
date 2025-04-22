@@ -1,6 +1,7 @@
 pub mod app;
 pub mod cache;
 pub mod camera_uniform;
+pub mod canvas;
 pub mod light_uniform;
 pub mod model_data;
 pub mod model_instance;
@@ -11,7 +12,6 @@ pub mod opaque_pipeline;
 pub mod render_context;
 pub mod state;
 pub mod ui;
-pub mod canvas;
 pub mod ui_node;
 pub mod ui_pipeline;
 pub mod ui_renderable;

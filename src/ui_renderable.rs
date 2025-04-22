@@ -1,6 +1,5 @@
 use std::{cmp::Ordering, collections::HashMap, sync::Arc};
 
-
 use crate::{
     cache::{CACHE, CacheKey, CacheValue},
     my_texture::{MyTexture, TextureSource},
@@ -29,9 +28,7 @@ pub enum TextureMeta {
     Font { font_path: String, character: char },
 }
 
-
-
-pub fn create_placeholder_texture(device: &wgpu::Device, queue:  &wgpu::Queue)->Arc<CacheValue>{
+pub fn create_placeholder_texture(device: &wgpu::Device, queue: &wgpu::Queue) -> Arc<CacheValue> {
     let texture = MyTexture::load(
         TextureSource::FilePath("assets/placeholder.png".to_string()),
         device,
@@ -47,7 +44,7 @@ impl TextureMeta {
         queue: &wgpu::Queue,
         ui_pipeline: &UIPipeline,
     ) -> UIRenderable {
-        let texture: Arc<CacheValue> = match self {            
+        let texture: Arc<CacheValue> = match self {
             TextureMeta::Texture { path } => CACHE.get_with(
                 CacheKey::Texture(TextureSource::FilePath(path.clone())),
                 || {
@@ -57,7 +54,10 @@ impl TextureMeta {
                     Arc::new(CacheValue::Texture(texture))
                 },
             ),
-            TextureMeta::Font { font_path, character } => CACHE.get_with(
+            TextureMeta::Font {
+                font_path,
+                character,
+            } => CACHE.get_with(
                 CacheKey::Texture(TextureSource::TextCharacter {
                     character: *character,
                     font_file_path: font_path.clone(),
@@ -80,7 +80,7 @@ impl TextureMeta {
             CacheValue::Texture(texture) => texture,
             _ => unreachable!(),
         };
-        let material_bind_group = ui_pipeline.create_material_bind_group(device, queue, texture);
+        let material_bind_group = ui_pipeline.create_material_bind_group(device, texture);
         UIRenderable {
             material_bind_group,
         }
@@ -105,7 +105,6 @@ impl TextureMeta {
 //         }
 //     }
 // }
-
 
 // depth off
 #[derive(Debug, Clone)]
@@ -137,8 +136,7 @@ pub struct UIInstanceRaw {
 }
 
 impl UIInstanceRaw {
-    const ATTRIBS: [wgpu::VertexAttribute; 1] =
-        wgpu::vertex_attr_array![0 => Float32x4];
+    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x4];
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         use std::mem;
 

@@ -8,7 +8,7 @@ use crate::{
     model_data::ModelData,
     model_meta::ModelMeta,
     my_texture::{MyTexture, TextureSource},
-    ui_renderable::{UIRenderable, TextureMeta},
+    ui_renderable::{TextureMeta, UIRenderable},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

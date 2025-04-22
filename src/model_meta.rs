@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    io::Cursor,
-    sync::Arc,
-};
+use std::{collections::HashMap, io::Cursor, sync::Arc};
 
 use image::{ImageBuffer, ImageReader};
 use russimp::{
@@ -13,7 +9,7 @@ use wgpu::{BindGroup, util::DeviceExt};
 
 use crate::{
     model_data::{ModelData, MyMesh},
-    opaque_pipeline::{OpaquePipeline},
+    opaque_pipeline::OpaquePipeline,
     vertex::Vertex,
 };
 
