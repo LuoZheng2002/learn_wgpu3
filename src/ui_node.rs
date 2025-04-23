@@ -488,7 +488,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             content: node.flatten_children(),
         };
         let cell_meta = TextureMeta::Texture {
-            path: "assets/piggies.webp".into(),
+            path: "assets/kiminonawa.jpg".into(),
         }; // to do
         UINode {
             box_dimensions: cell_dimensions,
@@ -499,6 +499,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
     fn get_cell_lengths_and_positions_tangent_dir(
         total_length: u32,
         children_lengths: Vec<u32>,
+        parent_padding: u32,
         uniform_division: bool,
         alignment: Either<HorizontalAlignment, VerticalAlignment>,
     ) -> Vec<(u32, u32)> {
@@ -508,7 +509,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             let cell_length = total_length / num_children as u32;
             let cell_lengths_and_positions = (0..num_children)
                 .map(|i| {
-                    let cell_pos = i as u32 * cell_length;
+                    let cell_pos = i as u32 * cell_length + parent_padding;
                     (cell_length, cell_pos)
                 })
                 .collect::<Vec<_>>();
@@ -529,7 +530,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                 .enumerate()
                 .map(|(i, length)| {
                     let cell_pos =
-                        padding * padding_factor + children_lengths[..i].iter().sum::<u32>();
+                        parent_padding + padding * padding_factor + children_lengths[..i].iter().sum::<u32>();
                     (*length, cell_pos)
                 })
                 .collect::<Vec<_>>();
@@ -539,6 +540,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
     fn get_cell_lengths_and_positions_normal_dir(
         length: u32,
         children_lengths: Vec<u32>,
+        parent_padding: u32,
         alignment: Either<HorizontalAlignment, VerticalAlignment>,
     ) -> Vec<(u32, u32)> {
         let padding_factor = match alignment {
@@ -553,7 +555,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             .iter()
             .map(|child_length| {
                 let padding = (length - child_length) / 2;
-                let cell_pos = padding * padding_factor;
+                let cell_pos = parent_padding + padding * padding_factor;
                 (length, cell_pos)
             })
             .collect::<Vec<_>>();
@@ -621,6 +623,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                         Self::get_cell_lengths_and_positions_tangent_dir(
                             total_width,
                             children_widths,
+                            box_dimensions.inner_pos_x(),
                             uniform_division,
                             Either::Left(h_alignment.clone()),
                         );
@@ -629,6 +632,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                         Self::get_cell_lengths_and_positions_normal_dir(
                             cell_height,
                             vec![cell_height; num_children],
+                            box_dimensions.inner_pos_y(),
                             Either::Right(v_alignment.clone()),
                         );
                     let cell_widths_and_heights_and_positions = cell_widths_and_positions
@@ -640,6 +644,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                         .zip(cell_widths_and_heights_and_positions)
                         .map(
                             |(child, ((cell_width, cell_pos_x), (cell_height, cell_pos_y)))| {
+                                println!("cell pos x: {}", cell_pos_x);
                                 Self::wrap_node_with_cell(
                                     child,
                                     cell_width,
@@ -683,6 +688,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                         Self::get_cell_lengths_and_positions_tangent_dir(
                             total_height,
                             children_heights,
+                            box_dimensions.inner_pos_y(),
                             uniform_division,
                             Either::Right(v_alignment.clone()),
                         );
@@ -690,6 +696,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                     let cell_widths_and_positions = Self::get_cell_lengths_and_positions_normal_dir(
                         cell_width,
                         vec![cell_width; num_children],
+                        box_dimensions.inner_pos_x(),
                         Either::Left(h_alignment.clone()),
                     );
                     let cell_widths_and_heights_and_positions = cell_widths_and_positions
@@ -763,16 +770,18 @@ impl UINode<BoxDimensionsAbsolute, ChildrenAreCells> {
             .collect::<Vec<_>>();
         let normalized_width = texture_width as f32 / cell_width as f32;
         let normalized_height = texture_height as f32 / cell_height as f32;
-        let location_left = match h_alignment {
+        let left_padding = match h_alignment {
             HorizontalAlignment::Left => 0.0,
             HorizontalAlignment::Center => (1.0 - normalized_width) / 2.0,
             HorizontalAlignment::Right => 1.0 - normalized_width,
         };
-        let location_top = match v_alignment {
+        let top_padding = match v_alignment {
             VerticalAlignment::Top => 0.0,
             VerticalAlignment::Center => (1.0 - normalized_height) / 2.0,
             VerticalAlignment::Bottom => 1.0 - normalized_height,
         };
+        let location_left = left_padding + box_dimensions.margin[3] as f32 / cell_width as f32;
+        let location_top = top_padding + box_dimensions.margin[0] as f32 / cell_height as f32;
         let location_right = location_left + normalized_width;
         let location_bottom = location_top + normalized_height;
         UIRenderInstruction {
@@ -816,8 +825,8 @@ impl UINode<BoxDimensionsAbsolute, ChildIsContent> {
         let sub_instructions = vec![sub_instruction];
         let normalized_width = texture_width as f32 / parent_width as f32;
         let normalized_height = texture_height as f32 / parent_height as f32;
-        let location_left = box_dimensions.inner_pos_x() as f32 / parent_width as f32;
-        let location_top = box_dimensions.inner_pos_y() as f32 / parent_height as f32;
+        let location_left = (box_dimensions.margin[3] + children.position_x) as f32 / parent_width as f32;
+        let location_top = (box_dimensions.margin[0] + children.position_y) as f32 / parent_height as f32;
         let location_right = location_left + normalized_width;
         let location_bottom = location_top + normalized_height;
         UIRenderInstruction {
