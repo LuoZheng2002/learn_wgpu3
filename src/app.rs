@@ -1,33 +1,45 @@
 use std::sync::Arc;
 
 use winit::{
-    application::ApplicationHandler, dpi::LogicalPosition, event::WindowEvent, event_loop::ActiveEventLoop, window::{Window, WindowAttributes, WindowId}
+    application::ApplicationHandler,
+    dpi::LogicalPosition,
+    event::{DeviceEvent, DeviceId, WindowEvent},
+    event_loop::ActiveEventLoop,
+    window::{Window, WindowAttributes, WindowId},
 };
 
-use crate::{render_context::RenderContext, state::State};
+use crate::{input_context::InputContext, render_context::RenderContext, state::State};
 
 #[derive(Default)]
 pub struct App {
     pub window: Option<Arc<Window>>,
     pub render_context: Option<RenderContext>,
     pub state: State,
+    pub input_context: InputContext,
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let attributes = WindowAttributes::default().with_inner_size(
-            winit::dpi::LogicalSize::new(800.0, 600.0),
-        ).with_position(LogicalPosition::new(0, 0));
-        let window = event_loop
-            .create_window(attributes)
-            .unwrap();
+        let attributes = WindowAttributes::default()
+            .with_inner_size(winit::dpi::LogicalSize::new(800.0, 600.0))
+            .with_position(LogicalPosition::new(0, 0));
+        let window = event_loop.create_window(attributes).unwrap();
         let window = Arc::new(window);
         self.render_context = Some(RenderContext::new(window.clone()));
         self.window = Some(window);
         self.state.init();
     }
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: DeviceId,
+        event: DeviceEvent,
+    ) {
+        self.input_context.handle_device_event(&event);
+    }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        self.input_context.handle_window_event(&event);
         match event {
             WindowEvent::CloseRequested => {
                 println!("The close button was pressed; stopping");
@@ -36,7 +48,7 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 self.window.as_ref().unwrap().request_redraw();
                 self.state
-                    .update(&self.render_context.as_ref().unwrap().size);
+                    .update(&mut self.input_context, &self.render_context.as_ref().unwrap().size);
                 match self
                     .render_context
                     .as_mut()

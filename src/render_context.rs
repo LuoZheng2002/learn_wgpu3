@@ -1,7 +1,7 @@
 use std::{collections::HashMap, mem, sync::Arc};
 
 use tokio::runtime::Runtime;
-use wgpu::{util::DeviceExt, CompositeAlphaMode};
+use wgpu::{CompositeAlphaMode, util::DeviceExt};
 use winit::window::Window;
 
 use crate::{
@@ -65,7 +65,7 @@ impl RenderContext {
                     label: None,
                     memory_hints: Default::default(),
                 },
-                None // Trace path
+                None, // Trace path
             ))
             .unwrap();
 
@@ -225,7 +225,7 @@ impl RenderContext {
             &self.depth_texture.view,
             &self.camera_bind_group,
         );
-        
+
         let ui_render_instructions = mem::take(&mut state.ui_render_instructions);
         assert!(ui_render_instructions.len() == 1);
         assert!(state.ui_render_instructions.is_empty());
@@ -238,12 +238,12 @@ impl RenderContext {
             // &self.depth_texture.view,
         );
         // submit will accept anything that implements IntoIter
-        
+
         // std::thread::sleep(std::time::Duration::from_millis(500));
-    //     let mut input = String::new();
-    // std::io::stdin()
-    //     .read_line(&mut input)
-    //     .expect("Failed to read line");
+        //     let mut input = String::new();
+        // std::io::stdin()
+        //     .read_line(&mut input)
+        //     .expect("Failed to read line");
         // panic!("render");
         self.queue.submit(std::iter::once(encoder.finish()));
         self.device.poll(wgpu::Maintain::Wait);

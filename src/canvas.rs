@@ -1,6 +1,3 @@
-
-
-
 // AnchoredCanvas, DockCanvas
 
 // Canvas is the root of the UI tree that always takes up the entire screen

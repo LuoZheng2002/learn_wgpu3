@@ -2,15 +2,12 @@ use std::{collections::HashMap, time::Instant};
 
 use cgmath::{Euler, Quaternion};
 use either::Either;
+use winit::keyboard::KeyCode;
 
 use crate::{
-    model_instance::ModelInstance,
-    model_meta::ModelMeta,
-    my_camera::MyCamera,
-    ui::{Button, Span, SpanDirection, Text, ToUINode},
-    ui_node::{
+    input_context::InputContext, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{Button, Span, SpanDirection, Text, ToUINode}, ui_node::{
         BoundedLength, HorizontalAlignment, RelativeLength, UIRenderInstruction, VerticalAlignment,
-    }, ui_renderable::TextureMeta,
+    }, ui_renderable::TextureMeta
 };
 
 // model path,
@@ -82,35 +79,47 @@ impl State {
             SpanDirection::Horizontal,
             BoundedLength::fixed_pixels(80),
             BoundedLength::fixed_pixels(60),
-            Either::Right([RelativeLength::Pixels(10),
+            Either::Right([
+                RelativeLength::Pixels(10),
                 RelativeLength::Pixels(20),
                 RelativeLength::Pixels(30),
-                RelativeLength::Pixels(40)]),
-                Either::Right([RelativeLength::Pixels(30),
+                RelativeLength::Pixels(40),
+            ]),
+            Either::Right([
+                RelativeLength::Pixels(30),
                 RelativeLength::Pixels(40),
                 RelativeLength::Pixels(50),
-                RelativeLength::Pixels(60)]),
+                RelativeLength::Pixels(60),
+            ]),
             HorizontalAlignment::Left,
             VerticalAlignment::Top,
             true,
-            TextureMeta::Texture { path: "assets/grass.jpg".into() }
+            TextureMeta::Texture {
+                path: "assets/grass.jpg".into(),
+            },
         );
         let span3 = Span::new(
             SpanDirection::Horizontal,
             BoundedLength::fixed_pixels(80),
             BoundedLength::fixed_pixels(60),
-            Either::Right([RelativeLength::Pixels(10),
+            Either::Right([
+                RelativeLength::Pixels(10),
                 RelativeLength::Pixels(20),
                 RelativeLength::Pixels(30),
-                RelativeLength::Pixels(40)]),
-                Either::Right([RelativeLength::Pixels(30),
+                RelativeLength::Pixels(40),
+            ]),
+            Either::Right([
+                RelativeLength::Pixels(30),
                 RelativeLength::Pixels(40),
                 RelativeLength::Pixels(50),
-                RelativeLength::Pixels(60)]),
+                RelativeLength::Pixels(60),
+            ]),
             HorizontalAlignment::Left,
             VerticalAlignment::Top,
             true,
-            TextureMeta::Texture { path: "assets/grass.jpg".into() }
+            TextureMeta::Texture {
+                path: "assets/grass.jpg".into(),
+            },
         );
         let mut span = Span::new(
             SpanDirection::Horizontal,
@@ -121,7 +130,9 @@ impl State {
             HorizontalAlignment::Left,
             VerticalAlignment::Top,
             false,
-            TextureMeta::Texture { path: "assets/genshin.jpg".into() }
+            TextureMeta::Texture {
+                path: "assets/genshin.jpg".into(),
+            },
         );
         span.push_child(Box::new(span2));
         span.push_child(Box::new(span3));
@@ -130,7 +141,7 @@ impl State {
         self.canvas = Some(span);
     }
 
-    pub fn update(&mut self, window_size: &winit::dpi::PhysicalSize<u32>) {
+    pub fn update(&mut self, input_context: &mut InputContext, window_size: &winit::dpi::PhysicalSize<u32>) {
         // calculate fps every 1 second
         let fps_timer = self.fps_timer.get_or_insert_with(|| Instant::now());
         let current_time = fps_timer.elapsed().as_secs_f32();
@@ -198,7 +209,18 @@ impl State {
         let ui_node = self.canvas.as_ref().unwrap().to_ui_node();
         let ui_node =
             ui_node.calculate_dimensions(screen_width, screen_height, screen_width, screen_height);
-        let ui_node = ui_node.flatten_children();
+        let ui_node = ui_node.flatten_children(
+            0,
+            0,
+            screen_width,
+            screen_height,
+            HorizontalAlignment::Left,
+            VerticalAlignment::Top,
+        );
+        let ui_node = ui_node.to_unified();
+        if input_context.get_key_down(KeyCode::Space){
+            println!("{}", ui_node.to_string(0));
+        }
         let render_instruction = ui_node.to_ui_render_instruction(screen_width, screen_height);
         self.submit_ui_render_instruction(render_instruction);
         // panic!()

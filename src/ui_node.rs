@@ -59,7 +59,7 @@ pub enum StructuredChildren<B: BoxDimensions> {
 /// it means that the UINode that owns this struct is actually the content, so it has alignment information for calculating
 /// its position with respect to the parent (cell)
 pub struct ChildrenAreCells {
-    cells: Vec<UINode<BoxDimensionsAbsolute, ChildIsContent>>,
+    cells: Vec<UINode<BoxDimensionsWithGlobal, ChildIsContent>>,
     h_alignment: HorizontalAlignment,
     v_alignment: VerticalAlignment,
 } //an ui node that owns the "Cells" struct is actually the content
@@ -74,7 +74,11 @@ pub struct ChildrenAreCells {
 pub struct ChildIsContent {
     position_x: u32, // top left corner relative to parent
     position_y: u32,
-    content: UINode<BoxDimensionsAbsolute, ChildrenAreCells>,
+    content: UINode<BoxDimensionsWithGlobal, ChildrenAreCells>,
+}
+
+pub struct UnifiedChildren {
+    children: Vec<UINode<BoxDimensionsWithGlobal, UnifiedChildren>>,
 }
 
 impl StructuredChildren<BoxDimensionsRelative> {
@@ -217,6 +221,7 @@ pub trait UIChildren<B: BoxDimensions> {}
 impl<B: BoxDimensions> UIChildren<B> for StructuredChildren<B> {}
 impl UIChildren<BoxDimensionsWithGlobal> for ChildrenAreCells {}
 impl UIChildren<BoxDimensionsWithGlobal> for ChildIsContent {}
+impl UIChildren<BoxDimensionsWithGlobal> for UnifiedChildren {}
 
 #[derive(Clone)]
 pub struct BoxDimensionsRelative {
@@ -234,9 +239,11 @@ pub struct BoxDimensionsAbsolute {
 }
 
 #[derive(Clone)]
-pub struct BoxDimensionsWithGlobal{
+pub struct BoxDimensionsWithGlobal {
     pub width: u32,
     pub height: u32,
+    pub rel_pos_x: u32,
+    pub rel_pos_y: u32,
     pub global_pos_x: u32,
     pub global_pos_y: u32,
     pub margin: [u32; 4],  // top, right, bottom, left
@@ -307,27 +314,27 @@ impl BoxDimensionsAbsolute {
 // element resize: has to go to the UI level, takes effect at the next frame, because it may affect siblings
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct UIIdentifier{
+pub struct UIIdentifier {
     pub name: String,
     pub id: u64,
 }
-impl UIIdentifier{
-    pub fn to_string(&self)->String{
+impl UIIdentifier {
+    pub fn to_string(&self) -> String {
         format!("{}%{}", self.name, self.id)
     }
 }
 
-pub struct UIIdentifierGenerator{
+pub struct UIIdentifierGenerator {
     pub mapping: HashMap<TypeId, u64>,
 }
 
-impl UIIdentifierGenerator{
-    pub fn new() -> Self{
-        UIIdentifierGenerator{
+impl UIIdentifierGenerator {
+    pub fn new() -> Self {
+        UIIdentifierGenerator {
             mapping: HashMap::new(),
         }
     }
-    pub fn next_id(&mut self, ui_type: TypeId) -> u64{
+    pub fn next_id(&mut self, ui_type: TypeId) -> u64 {
         let next = self.mapping.entry(ui_type).or_insert(0);
         let result = *next;
         *next += 1;
@@ -336,8 +343,9 @@ impl UIIdentifierGenerator{
 }
 
 // a lazy static mutable hashmap that records the next id of each type of UI, with key being the typeid of the UI struct
-lazy_static!{
-    pub static ref UI_IDENTIFIER_MAP: Mutex<UIIdentifierGenerator> = Mutex::new(UIIdentifierGenerator::new());
+lazy_static! {
+    pub static ref UI_IDENTIFIER_MAP: Mutex<UIIdentifierGenerator> =
+        Mutex::new(UIIdentifierGenerator::new());
 }
 
 pub struct UINode<B: BoxDimensions, C: UIChildren<B>> {
@@ -506,8 +514,8 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
 
 // the canvas will be rendered on the entire screen
 pub struct UIRenderInstruction {
-    pub version: u64, // cache key
-    pub id: UIIdentifier,      // cache key
+    pub version: u64,     // cache key
+    pub id: UIIdentifier, // cache key
     pub texture_width: u32,
     pub texture_height: u32,
     pub location_left: f32, // inside parent
@@ -523,23 +531,41 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
         node: UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>>,
         cell_width: u32,
         cell_height: u32,
-        cell_pos_x: u32,
-        cell_pos_y: u32,
-    ) -> UINode<BoxDimensionsAbsolute, ChildIsContent> {
-        let cell_dimensions = BoxDimensionsAbsolute {
-            width: cell_width,
-            height: cell_height,
-            margin: [0, 0, 0, 0],
-            padding: [0, 0, 0, 0],
-        };
+        cell_rel_pos_x: u32,
+        cell_rel_pos_y: u32,
+        parent_global_x: u32,
+        parent_global_y: u32,
+        h_alignment: HorizontalAlignment,
+        v_alignment: VerticalAlignment,
+    ) -> UINode<BoxDimensionsWithGlobal, ChildIsContent> {
+        let cell_global_pos_x = parent_global_x + cell_rel_pos_x;
+        let cell_global_pos_y = parent_global_y + cell_rel_pos_y;
+
         let cell_children = ChildIsContent {
-            position_x: cell_pos_x,
-            position_y: cell_pos_y,
-            content: node.flatten_children(),
+            position_x: cell_rel_pos_x, // likely to be useless
+            position_y: cell_rel_pos_y,
+            content: node.flatten_children(
+                cell_global_pos_x,
+                cell_global_pos_y,
+                cell_width,
+                cell_height,
+                h_alignment,
+                v_alignment,
+            ),
         };
         let cell_meta = TextureMeta::Texture {
             path: "assets/kiminonawa.jpg".into(),
-        }; // to do
+        };
+        let cell_dimensions = BoxDimensionsWithGlobal {
+            width: cell_width,
+            height: cell_height,
+            rel_pos_x: cell_rel_pos_x,
+            rel_pos_y: cell_rel_pos_y,
+            global_pos_x: cell_global_pos_x,
+            global_pos_y: cell_global_pos_y,
+            margin: [0, 0, 0, 0],
+            padding: [0, 0, 0, 0],
+        };
         UINode {
             box_dimensions: cell_dimensions,
             children: cell_children,
@@ -547,7 +573,10 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             // every cell is different
             identifier: UIIdentifier {
                 name: "Cell".into(),
-                id: UI_IDENTIFIER_MAP.lock().unwrap().next_id(TypeId::of::<Cell>()),
+                id: UI_IDENTIFIER_MAP
+                    .lock()
+                    .unwrap()
+                    .next_id(TypeId::of::<Cell>()),
             },
             version: 0,
         }
@@ -586,8 +615,9 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                 .iter()
                 .enumerate()
                 .map(|(i, length)| {
-                    let cell_pos =
-                        parent_padding + padding * padding_factor + children_lengths[..i].iter().sum::<u32>();
+                    let cell_pos = parent_padding
+                        + padding * padding_factor
+                        + children_lengths[..i].iter().sum::<u32>();
                     (*length, cell_pos)
                 })
                 .collect::<Vec<_>>();
@@ -618,7 +648,15 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             .collect::<Vec<_>>();
         cell_lengths_and_positions
     }
-    pub fn flatten_children(self) -> UINode<BoxDimensionsAbsolute, ChildrenAreCells> {
+    pub fn flatten_children(
+        self,
+        parent_global_x: u32, // assume it does not take into account parent's padding
+        parent_global_y: u32,
+        parent_width: u32,
+        parent_height: u32,
+        h_alignment: HorizontalAlignment, // if the outermost node is a canvas that covers the entire screen, it does not matter
+        v_alignment: VerticalAlignment,
+    ) -> UINode<BoxDimensionsWithGlobal, ChildrenAreCells> {
         let UINode {
             box_dimensions,
             children,
@@ -626,6 +664,24 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             identifier,
             version,
         } = self;
+        let width_difference = parent_width as i32 - box_dimensions.width_with_margin() as i32;
+        let width_difference = i32::max(width_difference, 0) as u32;
+        let height_difference = parent_height as i32 - box_dimensions.height_with_margin() as i32;
+        let height_difference = i32::max(height_difference, 0) as u32;
+        let left_padding = match h_alignment {
+            HorizontalAlignment::Left => 0,
+            HorizontalAlignment::Center => width_difference / 2,
+            HorizontalAlignment::Right => width_difference,
+        };
+        let top_padding = match v_alignment {
+            VerticalAlignment::Top => 0,
+            VerticalAlignment::Center => height_difference / 2,
+            VerticalAlignment::Bottom => height_difference,
+        };
+        let self_rel_x = left_padding + box_dimensions.margin[3];
+        let self_rel_y = top_padding + box_dimensions.margin[0];
+        let self_global_x = parent_global_x + self_rel_x;
+        let self_global_y = parent_global_y + self_rel_y;
         let children: ChildrenAreCells = match children {
             StructuredChildren::NoChildren => {
                 ChildrenAreCells {
@@ -649,10 +705,14 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                     cell_height,
                     cell_pos_x,
                     cell_pos_y,
+                    self_global_x,
+                    self_global_y,
+                    h_alignment.clone(),
+                    v_alignment.clone(),
                 );
                 ChildrenAreCells {
                     cells: vec![cell],
-                    h_alignment,
+                    h_alignment, // this is likely to have no effect now
                     v_alignment,
                 }
             }
@@ -707,8 +767,12 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                                     child,
                                     cell_width,
                                     cell_height,
-                                    cell_pos_x,
+                                    cell_pos_x, // it includes parent's padding
                                     cell_pos_y,
+                                    self_global_x, // so this does not include parent's padding
+                                    self_global_y,
+                                    h_alignment.clone(),
+                                    v_alignment.clone(),
                                 )
                             },
                         )
@@ -772,6 +836,10 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                                     cell_height,
                                     cell_pos_x,
                                     cell_pos_y,
+                                    self_global_x,
+                                    self_global_y,
+                                    h_alignment.clone(),
+                                    v_alignment.clone(),
                                 )
                             },
                         )
@@ -792,6 +860,16 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                 todo!()
             }
         };
+        let box_dimensions = BoxDimensionsWithGlobal {
+            width: box_dimensions.width,
+            height: box_dimensions.height,
+            rel_pos_x: self_rel_x,
+            rel_pos_y: self_rel_y,
+            global_pos_x: self_global_x,
+            global_pos_y: self_global_y,
+            margin: box_dimensions.margin,
+            padding: box_dimensions.padding,
+        };
         UINode {
             box_dimensions,
             children,
@@ -802,12 +880,8 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
     }
 }
 
-impl UINode<BoxDimensionsAbsolute, ChildrenAreCells> {
-    pub fn to_ui_render_instruction(
-        &self,
-        cell_width: u32,
-        cell_height: u32,
-    ) -> UIRenderInstruction {
+impl UINode<BoxDimensionsWithGlobal, ChildrenAreCells> {
+    pub fn to_unified(self) -> UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         let UINode {
             box_dimensions,
             children,
@@ -815,54 +889,44 @@ impl UINode<BoxDimensionsAbsolute, ChildrenAreCells> {
             identifier,
             version,
         } = self;
-        let ChildrenAreCells {
-            cells,
-            h_alignment,
-            v_alignment,
-        } = children;
-        let texture_width = box_dimensions.width;
-        let texture_height = box_dimensions.height;
-        let sub_instructions = cells
-            .iter()
-            .map(|cell| {
-                let parent_width = texture_width;
-                let parent_height = texture_height;
-                cell.to_ui_render_instruction(parent_width, parent_height)
-            })
-            .collect::<Vec<_>>();
-        let normalized_width = texture_width as f32 / cell_width as f32;
-        let normalized_height = texture_height as f32 / cell_height as f32;
-        let left_padding = match h_alignment {
-            HorizontalAlignment::Left => 0.0,
-            HorizontalAlignment::Center => (1.0 - normalized_width) / 2.0,
-            HorizontalAlignment::Right => 1.0 - normalized_width,
-        };
-        let top_padding = match v_alignment {
-            VerticalAlignment::Top => 0.0,
-            VerticalAlignment::Center => (1.0 - normalized_height) / 2.0,
-            VerticalAlignment::Bottom => 1.0 - normalized_height,
-        };
-        let location_left = left_padding + box_dimensions.margin[3] as f32 / cell_width as f32;
-        let location_top = top_padding + box_dimensions.margin[0] as f32 / cell_height as f32;
-        let location_right = location_left + normalized_width;
-        let location_bottom = location_top + normalized_height;
-        UIRenderInstruction {
-            version: *version,
-            id: identifier.clone(),
-            texture_width,
-            texture_height,
-            location_top,
-            location_left,
-            location_bottom,
-            location_right,
-            sub_instructions,
-            texture_meta: meta.clone(),
+        let children = children
+            .cells
+            .into_iter()
+            .map(|child| child.to_unified())
+            .collect();
+        let children = UnifiedChildren { children };
+        UINode {
+            box_dimensions,
+            children,
+            meta,
+            identifier,
+            version,
+        }
+    }
+}
+impl UINode<BoxDimensionsWithGlobal, ChildIsContent> {
+    pub fn to_unified(self) -> UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
+        let UINode {
+            box_dimensions,
+            children,
+            meta,
+            identifier,
+            version,
+        } = self;
+        let children = vec![children.content.to_unified()];
+        let children = UnifiedChildren { children };
+        UINode {
+            box_dimensions,
+            children,
+            meta,
+            identifier,
+            version,
         }
     }
 }
 
-impl UINode<BoxDimensionsAbsolute, ChildIsContent> {
-    fn to_ui_render_instruction(
+impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
+    pub fn to_ui_render_instruction(
         &self,
         parent_width: u32,
         parent_height: u32,
@@ -876,36 +940,64 @@ impl UINode<BoxDimensionsAbsolute, ChildIsContent> {
         } = self;
         let texture_width = box_dimensions.width;
         let texture_height = box_dimensions.height;
-        // let sub_instructions = children.cells.iter().map(|cell| {
-        //     let parent_width = texture_width;
-        //     let parent_height = texture_height;
-        //     cell.to_ui_render_instruction(parent_width, parent_height)
-        // }).collect::<Vec<_>>();
-        let cell_width = texture_width;
-        let cell_height = texture_height;
-        let sub_instruction = children
-            .content
-            .to_ui_render_instruction(cell_width, cell_height);
-        let sub_instructions = vec![sub_instruction];
-        let normalized_width = texture_width as f32 / parent_width as f32;
-        let normalized_height = texture_height as f32 / parent_height as f32;
-        let location_left = (box_dimensions.margin[3] + children.position_x) as f32 / parent_width as f32;
-        let location_top = (box_dimensions.margin[0] + children.position_y) as f32 / parent_height as f32;
-        let location_right = location_left + normalized_width;
-        let location_bottom = location_top + normalized_height;
+        let sub_instructions = children
+            .children
+            .iter()
+            .map(|child| {
+                let parent_width = texture_width;
+                let parent_height = texture_height;
+                child.to_ui_render_instruction(parent_width, parent_height)
+            })
+            .collect::<Vec<_>>();
+        let location_left = box_dimensions.rel_pos_x;
+        let location_top = box_dimensions.rel_pos_y;
+        let location_right = location_left + box_dimensions.width;
+        let location_bottom = location_top + box_dimensions.height;
+        let location_left = location_left as f32 / parent_width as f32;
+        let location_top = location_top as f32 / parent_height as f32;
+        let location_right = location_right as f32 / parent_width as f32;
+        let location_bottom = location_bottom as f32 / parent_height as f32;
         UIRenderInstruction {
             version: *version,
             id: identifier.clone(),
             texture_width,
             texture_height,
-            location_left,
             location_top,
-            location_right,
+            location_left,
             location_bottom,
+            location_right,
             sub_instructions,
             texture_meta: meta.clone(),
         }
     }
+    pub fn to_string(&self, indent: u32) -> String {
+        let UINode {
+            box_dimensions,
+            children,
+            meta,
+            identifier,
+            version,
+        } = self;
+        let pad = " ".repeat((indent * 4) as usize);
+        let mut result = format!(
+            "{}ID: {}, Version: {}, w: {}, h: {}, rel_x: {}, rel_y:{}, glo_x: {}, glo_y:{}, margin: {:?}, padding: {:?}, meta: {:?}",
+            pad,
+            identifier.to_string(),
+            version,
+            box_dimensions.width,
+            box_dimensions.height,
+            box_dimensions.rel_pos_x,
+            box_dimensions.rel_pos_y,
+            box_dimensions.global_pos_x,
+            box_dimensions.global_pos_y,
+            box_dimensions.margin,
+            box_dimensions.padding,
+            meta
+        );
+        for child in children.children.iter() {
+            result.push('\n');
+            result.push_str(&child.to_string(indent + 1));
+        }
+        result
+    }
 }
-
-pub struct Button {}

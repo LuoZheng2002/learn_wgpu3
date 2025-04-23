@@ -139,7 +139,8 @@ pub struct UIInstanceRaw {
 }
 
 impl UIInstanceRaw {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![0 => Float32x4, 1 => Uint32];
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x4, 1 => Uint32];
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         use std::mem;
 

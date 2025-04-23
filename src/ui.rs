@@ -7,9 +7,10 @@ use std::any::TypeId;
 use either::Either;
 
 use crate::{
-    cache::{get_font, CacheValue},
+    cache::{CacheValue, get_font},
     ui_node::{
-        self, BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength, StructuredChildren, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP
+        self, BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength,
+        StructuredChildren, UI_IDENTIFIER_MAP, UIIdentifier, UINode, VerticalAlignment,
     },
     ui_renderable::TextureMeta,
 };
@@ -113,14 +114,13 @@ pub struct Char {
     pub id: UIIdentifier,
 }
 
-impl Char{
-    pub fn new(
-        character: char,
-        font_path: String,
-        scale: f32,
-    ) -> Self {
-        let id = UI_IDENTIFIER_MAP.lock().unwrap().next_id(TypeId::of::<Char>());
-        let id = UIIdentifier{
+impl Char {
+    pub fn new(character: char, font_path: String, scale: f32) -> Self {
+        let id = UI_IDENTIFIER_MAP
+            .lock()
+            .unwrap()
+            .next_id(TypeId::of::<Char>());
+        let id = UIIdentifier {
             id: id,
             name: format!("Char({})", character),
         };
@@ -189,8 +189,8 @@ impl ToUINode for Text {
     fn to_ui_node(
         &self,
     ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
-        
-        let children_ui_nodes = self.text
+        let children_ui_nodes = self
+            .text
             .iter()
             .map(|(_, char)| char.to_ui_node())
             .collect::<Vec<_>>();
@@ -344,7 +344,7 @@ impl Span {
         let id = UIIdentifier {
             id,
             name: format!("Span"),
-        };        
+        };
         Self {
             direction,
             children: Vec::new(),

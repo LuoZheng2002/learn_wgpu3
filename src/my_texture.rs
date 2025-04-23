@@ -4,7 +4,10 @@ use image::{GenericImageView, ImageBuffer, Rgba};
 use lazy_static::lazy_static;
 use rusttype::{Font, point};
 
-use crate::{cache::{get_font, CacheValue}, ui_node::UIIdentifier};
+use crate::{
+    cache::{CacheValue, get_font},
+    ui_node::UIIdentifier,
+};
 
 #[derive(Debug)]
 pub struct MyTexture {
@@ -101,11 +104,7 @@ impl MyTexture {
                 return;
             }
             let intensity = (v * 255.0) as u8;
-            image.put_pixel(
-                x  as u32,
-                y as u32,
-                Rgba([0, 255, 0, intensity]),
-            );
+            image.put_pixel(x as u32, y as u32, Rgba([0, 255, 0, intensity]));
         });
         image
     }

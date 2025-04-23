@@ -6,7 +6,7 @@ use std::sync::Arc;
 use wgpu::{RenderPipeline, util::DeviceExt};
 
 use crate::{
-    cache::{CacheKey, CacheValue, CACHE},
+    cache::{CACHE, CacheKey, CacheValue},
     my_texture::{MyTexture, TextureSource},
     ui_node::UIRenderInstruction,
     ui_renderable::{UIInstance, UIInstanceRaw},
@@ -199,12 +199,13 @@ impl UIPipeline {
         // if there is no child texture in the cache,
         // create the blank texture and execute the sub instructions
         // tmp
-        let child_texture = CACHE.get(&CacheKey::Texture(TextureSource::UI { version, id: id.clone() }));
+        let child_texture = CACHE.get(&CacheKey::Texture(TextureSource::UI {
+            version,
+            id: id.clone(),
+        }));
         // let child_texture = None;
         let child_texture = match child_texture {
-            Some(child_texture) => {
-                child_texture
-            }
+            Some(child_texture) => child_texture,
             None => {
                 let texture_width = u32::max(render_instruction.texture_width, 1);
                 let texture_height = u32::max(render_instruction.texture_height, 1);
@@ -214,7 +215,7 @@ impl UIPipeline {
                     texture_height,
                     Some("ui_texture"),
                 );
-                
+
                 let ui_renderable = render_instruction
                     .texture_meta
                     .to_ui_renderable(device, queue, self);
@@ -223,7 +224,7 @@ impl UIPipeline {
                 let mut render_pass = Self::create_render_pass(encoder, &texture.view);
                 render_pass.set_pipeline(&self.pipeline);
                 render_pass
-                    .set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);                
+                    .set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.set_bind_group(0, &material_bind_group, &[]);
                 let ui_instance = UIInstance {
                     location_left: -1.0,
@@ -244,16 +245,23 @@ impl UIPipeline {
                 // device.poll(wgpu::Maintain::Wait);
                 // call the sub instructions before rendering the child texture so that they are queued first
                 for sub_instruction in render_instruction.sub_instructions {
-                    self.render_helper(encoder, sub_instruction, &texture.view, device, queue, false);
+                    self.render_helper(
+                        encoder,
+                        sub_instruction,
+                        &texture.view,
+                        device,
+                        queue,
+                        false,
+                    );
                 }
                 let result = Arc::new(CacheValue::Texture(texture));
                 CACHE.insert(
                     CacheKey::Texture(TextureSource::UI { version, id }),
                     result.clone(),
                 );
-                
+
                 result
-            }            
+            }
         };
         let child_texture = match child_texture.as_ref() {
             CacheValue::Texture(texture) => texture,
@@ -268,7 +276,7 @@ impl UIPipeline {
         // let normalized_location_right = 0.5;
         // let normalized_location_top = 0.5;
         // let normalized_location_bottom = -0.5;
-        
+
         let ui_instance = UIInstance {
             location_left: normalized_location_left,
             location_top: normalized_location_top,
@@ -294,8 +302,6 @@ impl UIPipeline {
         //     _ => unreachable!(),
         // };
 
-
-
         let mut render_pass = Self::create_render_pass(encoder, parent_texture_view.into());
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
@@ -308,13 +314,12 @@ impl UIPipeline {
         render_pass.draw_indexed(0..6, 0, 0..1);
         drop(render_pass);
 
-
         // device.poll(wgpu::Maintain::Wait);
     }
     pub fn render(
         &self,
         encoder: &mut wgpu::CommandEncoder,
-        render_instructions: Vec<UIRenderInstruction>,       
+        render_instructions: Vec<UIRenderInstruction>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         color_view: &wgpu::TextureView,
