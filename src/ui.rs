@@ -2,14 +2,15 @@
 // layout information
 // an element can have: zero children, one child, or many children
 
+use std::any::TypeId;
+
 use either::Either;
 use rusttype::Font;
 
 use crate::{
-    cache::{CacheValue, get_font},
+    cache::{get_font, CacheValue},
     ui_node::{
-        self, BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength,
-        StructuredChildren, UINode, VerticalAlignment,
+        self, BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength, StructuredChildren, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP
     },
     ui_renderable::TextureMeta,
 };
@@ -37,8 +38,10 @@ pub enum Children {
 //     pub child: Option<Box<dyn ToUINode>>,
 // }
 
+pub struct Cell;
+
 pub struct Text {
-    pub text: String,
+    pub text: Vec<(char, Char)>,
     pub font_path: String,
     pub scale: f32,
     pub margin: [RelativeLength; 4],
@@ -46,9 +49,19 @@ pub struct Text {
     pub color: cgmath::Vector4<f32>,
     pub width: BoundedLength,
     pub height: BoundedLength,
+    pub id: UIIdentifier,
+    pub version: u64,
 }
 
 impl Text {
+    fn chars_to_nodes(s: String, font_path: String, scale: f32) -> Vec<(char, Char)> {
+        s.chars()
+            .map(|c| {
+                let char = Char::new(c, font_path.clone(), scale);
+                (c, char)
+            })
+            .collect::<Vec<_>>()
+    }
     pub fn new(
         initial_text: String,
         font_path: String,
@@ -67,8 +80,17 @@ impl Text {
             Either::Left(p) => [p.clone(), p.clone(), p.clone(), p.clone()],
             Either::Right(p) => p,
         };
+        let text = Self::chars_to_nodes(initial_text, font_path.clone(), scale);
+        let id = UI_IDENTIFIER_MAP
+            .lock()
+            .unwrap()
+            .next_id(TypeId::of::<Text>());
+        let id = UIIdentifier {
+            id,
+            name: format!("Text"),
+        };
         Self {
-            text: initial_text,
+            text,
             font_path,
             scale,
             margin,
@@ -76,31 +98,58 @@ impl Text {
             color,
             width,
             height,
+            id,
+            version: 0,
         }
     }
     pub fn set_text(&mut self, text: String) {
-        self.text = text;
+        self.text = Self::chars_to_nodes(text, self.font_path.clone(), self.scale);
     }
 }
 
-pub struct Char<'a> {
+pub struct Char {
     pub character: char,
     pub font_path: String,
-    pub font: &'a Font<'static>,
     pub scale: f32,
+    pub id: UIIdentifier,
 }
 
-impl<'a> ToUINode for Char<'a> {
+impl Char{
+    pub fn new(
+        character: char,
+        font_path: String,
+        scale: f32,
+    ) -> Self {
+        let id = UI_IDENTIFIER_MAP.lock().unwrap().next_id(TypeId::of::<Char>());
+        let id = UIIdentifier{
+            id: id,
+            name: format!("Char({})", character),
+        };
+        Self {
+            character,
+            font_path,
+            scale,
+            id,
+        }
+    }
+}
+
+impl ToUINode for Char {
     fn to_ui_node(
         &self,
     ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
+        let font = get_font(self.font_path.clone());
+        let font = match font.as_ref() {
+            CacheValue::Font(font) => font,
+            _ => panic!("Font not found"),
+        };
         let scale = rusttype::Scale::uniform(self.scale);
-        let v_metrics = self.font.v_metrics(scale);
+        let v_metrics = font.v_metrics(scale);
         // round ascent to the nearest integer
         let ascent = v_metrics.ascent.round() as i32;
         let descent = v_metrics.descent.round() as i32;
         let line_gap = v_metrics.line_gap.round() as u32;
-        let glyph = self.font.glyph(self.character).scaled(scale);
+        let glyph = font.glyph(self.character).scaled(scale);
         let h_metrics = glyph.h_metrics();
 
         let advance_width = h_metrics.advance_width.round() as u32;
@@ -131,6 +180,8 @@ impl<'a> ToUINode for Char<'a> {
                 character: self.character,
                 font_path: self.font_path.clone(),
             },
+            identifier: self.id.clone(),
+            version: 0,
         }
     }
 }
@@ -139,23 +190,10 @@ impl ToUINode for Text {
     fn to_ui_node(
         &self,
     ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
-        let font = get_font(self.font_path.clone());
-        let font = match font.as_ref() {
-            CacheValue::Font(font) => font,
-            _ => panic!("Font not found"),
-        };
-        let children_ui_nodes = self
-            .text
-            .chars()
-            .map(|c| {
-                let c = Char {
-                    character: c,
-                    font: &font,
-                    font_path: self.font_path.clone(),
-                    scale: self.scale,
-                };
-                c.to_ui_node()
-            })
+        
+        let children_ui_nodes = self.text
+            .iter()
+            .map(|(_, char)| char.to_ui_node())
             .collect::<Vec<_>>();
         let box_dimensions = BoxDimensionsRelative {
             width: self.width.clone(),
@@ -174,6 +212,8 @@ impl ToUINode for Text {
             meta: TextureMeta::Texture {
                 path: "assets/placeholder.png".into(),
             },
+            identifier: self.id.clone(),
+            version: self.version,
         }
     }
 }
@@ -181,6 +221,8 @@ impl ToUINode for Text {
 pub struct Button {
     pub box_dimensions: BoxDimensionsRelative,
     child: Option<Box<dyn ToUINode>>,
+    pub id: UIIdentifier,
+    pub version: u64,
 }
 
 // callback function
@@ -207,9 +249,19 @@ impl Button {
             margin,
             padding,
         };
+        let id = UI_IDENTIFIER_MAP
+            .lock()
+            .unwrap()
+            .next_id(TypeId::of::<Button>());
+        let id = UIIdentifier {
+            id,
+            name: format!("Button"),
+        };
         Self {
             box_dimensions,
             child: None,
+            id,
+            version: 0,
         }
     }
     pub fn set_child(&mut self, child: Box<dyn ToUINode>) {
@@ -237,6 +289,8 @@ impl ToUINode for Button {
             meta: TextureMeta::Texture {
                 path: "assets/placeholder.png".into(),
             },
+            identifier: self.id.clone(),
+            version: self.version,
         }
     }
 }
@@ -254,6 +308,8 @@ pub struct Span {
     pub v_alignment: VerticalAlignment,
     pub uniform_division: bool,
     pub texture: TextureMeta,
+    pub id: UIIdentifier,
+    pub version: u64,
 }
 
 impl Span {
@@ -282,6 +338,14 @@ impl Span {
             margin,
             padding,
         };
+        let id = UI_IDENTIFIER_MAP
+            .lock()
+            .unwrap()
+            .next_id(TypeId::of::<Span>());
+        let id = UIIdentifier {
+            id,
+            name: format!("Span"),
+        };        
         Self {
             direction,
             children: Vec::new(),
@@ -290,6 +354,8 @@ impl Span {
             v_alignment,
             uniform_division,
             texture,
+            id,
+            version: 0,
         }
     }
     pub fn push_child(&mut self, child: Box<dyn ToUINode>) {
@@ -323,6 +389,8 @@ impl ToUINode for Span {
                 },
             },
             meta: self.texture.clone(),
+            identifier: self.id.clone(),
+            version: self.version,
         }
     }
 }

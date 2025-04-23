@@ -4,7 +4,7 @@ use image::{GenericImageView, ImageBuffer, Rgba};
 use lazy_static::lazy_static;
 use rusttype::{Font, point};
 
-use crate::cache::{CacheValue, get_font};
+use crate::{cache::{get_font, CacheValue}, ui_node::UIIdentifier};
 
 #[derive(Debug)]
 pub struct MyTexture {
@@ -26,7 +26,7 @@ pub enum TextureSource {
     },
     UI {
         version: u64,
-        id: u64,
+        id: UIIdentifier,
     },
 }
 
@@ -62,33 +62,32 @@ impl MyTexture {
         let bounding_left = bounding_box.min.x;
         let bounding_right = bounding_box.max.x;
         let margin_top = ascent + bounding_top;
-        assert!(margin_top >= 0, "glpyh \"{}\" is above the top", character);
-        let margin_top = margin_top as u32;
-        let margin_bottom = -(descent + bounding_bottom);
-        assert!(
-            margin_bottom >= 0,
-            "glpyh \"{}\" is below the bottom",
-            character
-        );
-        let _margin_bottom = margin_bottom as u32;
+        // assert!(margin_top >= 0, "glpyh \"{}\" is above the top", character);
+        // let margin_top = margin_top as u32;
+        // let margin_bottom = -(descent + bounding_bottom);
+        // assert!(
+        //     margin_bottom >= 0,
+        //     "glpyh \"{}\" is below the bottom",
+        //     character
+        // );
+        // let _margin_bottom = margin_bottom as u32;
 
         let left_side_bearing = h_metrics.left_side_bearing.round() as i32;
         let advance_width = h_metrics.advance_width.round() as i32;
 
         let margin_left = left_side_bearing + bounding_left; // left_side_bearing - (abs bounding_left)
-        assert!(
-            margin_left >= 0,
-            "glyph \"{}\" margin left is negative",
-            character
-        );
-        let margin_left = margin_left as u32;
-        let margin_right = advance_width - bounding_right; // advance_width - (abs bounding_right)
-        assert!(
-            margin_right >= 0,
-            "glyph \"{}\" margin right is negative",
-            character
-        );
-        let _margin_right = margin_right as u32;
+        // assert!(
+        //     margin_left >= 0,
+        //     "glyph \"{}\" margin left is negative",
+        //     character
+        // );
+        // let margin_right = advance_width - bounding_right; // advance_width - (abs bounding_right)
+        // assert!(
+        //     margin_right >= 0,
+        //     "glyph \"{}\" margin right is negative",
+        //     character
+        // );
+        // let _margin_right = margin_right as u32;
 
         // let width = bounding_box.width() as u32;
         // let height = bounding_box.height() as u32;
@@ -96,10 +95,15 @@ impl MyTexture {
         let height = (ascent - descent) as u32;
         let mut image = image::ImageBuffer::new(width, height);
         glyph.draw(|x, y, v| {
+            let x = x as i32 + margin_left;
+            let y = y as i32 + margin_top;
+            if x < 0 || x >= width as i32 || y < 0 || y >= height as i32 {
+                return;
+            }
             let intensity = (v * 255.0) as u8;
             image.put_pixel(
-                x + margin_left,
-                y + margin_top,
+                x  as u32,
+                y as u32,
                 Rgba([0, 255, 0, intensity]),
             );
         });

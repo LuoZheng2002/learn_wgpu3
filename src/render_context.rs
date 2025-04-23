@@ -248,7 +248,6 @@ impl RenderContext {
         self.queue.submit(std::iter::once(encoder.finish()));
         self.device.poll(wgpu::Maintain::Wait);
         output.present();
-        println!("present");
         Ok(())
     }
 }

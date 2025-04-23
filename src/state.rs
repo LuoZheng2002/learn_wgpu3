@@ -52,18 +52,18 @@ impl State {
     pub fn init(&mut self) {
         let text = Text::new(
             // format!("fps: {}", self.fps).to_string(),
-            "".into(),
-            "assets/times.ttf".to_string(),
+            "fpsmnlk: 100".into(),
+            "assets/consolas.ttf".to_string(),
             50.0,
-            Either::Left(RelativeLength::Pixels(0)),
-            Either::Left(RelativeLength::Pixels(0)),
+            Either::Left(RelativeLength::Pixels(20)),
+            Either::Left(RelativeLength::Pixels(20)),
             cgmath::Vector4 {
                 x: 0.0,
                 y: 0.0,
                 z: 1.0,
                 w: 1.0,
             },
-            BoundedLength::fixed_pixels(800),
+            BoundedLength::fixed_pixels(500),
             BoundedLength::fixed_pixels(400),
         );
         let button = Button::new(
@@ -114,23 +114,18 @@ impl State {
         );
         let mut span = Span::new(
             SpanDirection::Horizontal,
-            BoundedLength::fixed_dependent(RelativeLength::RelativeScreenWidth(0.5)),
-            BoundedLength::fixed_dependent(RelativeLength::RelativeScreenHeight(0.5)),
-            Either::Right([RelativeLength::Pixels(10),
-                RelativeLength::Pixels(20),
-                RelativeLength::Pixels(30),
-                RelativeLength::Pixels(40)]),
-                Either::Right([RelativeLength::Pixels(30),
-                RelativeLength::Pixels(40),
-                RelativeLength::Pixels(50),
-                RelativeLength::Pixels(60)]),
+            BoundedLength::fixed_dependent(RelativeLength::RelativeScreenWidth(0.9)),
+            BoundedLength::fixed_dependent(RelativeLength::RelativeScreenHeight(0.9)),
+            Either::Left(RelativeLength::Pixels(10)),
+            Either::Left(RelativeLength::Pixels(10)),
             HorizontalAlignment::Left,
             VerticalAlignment::Top,
-            true,
+            false,
             TextureMeta::Texture { path: "assets/genshin.jpg".into() }
         );
         span.push_child(Box::new(span2));
         span.push_child(Box::new(span3));
+        span.push_child(Box::new(text));
         // span.push_child(Box::new(button));
         self.canvas = Some(span);
     }

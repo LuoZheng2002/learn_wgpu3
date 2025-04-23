@@ -7,11 +7,12 @@
 // padding, margin, children
 // width, height,
 
-use std::{i32, vec};
+use std::{any::TypeId, collections::HashMap, i32, sync::Mutex, vec};
 
 use either::Either;
+use lazy_static::lazy_static;
 
-use crate::ui_renderable::TextureMeta;
+use crate::{ui::Cell, ui_renderable::TextureMeta};
 
 #[derive(Clone)]
 pub enum HorizontalAlignment {
@@ -294,10 +295,46 @@ impl BoxDimensionsAbsolute {
 // events: cursor inside element -> change color, cursor click: call callback, cursor drag: (cursor click + move)
 // element resize: has to go to the UI level, takes effect at the next frame, because it may affect siblings
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UIIdentifier{
+    pub name: String,
+    pub id: u64,
+}
+impl UIIdentifier{
+    pub fn to_string(&self)->String{
+        format!("{}%{}", self.name, self.id)
+    }
+}
+
+pub struct UIIdentifierGenerator{
+    pub mapping: HashMap<TypeId, u64>,
+}
+
+impl UIIdentifierGenerator{
+    pub fn new() -> Self{
+        UIIdentifierGenerator{
+            mapping: HashMap::new(),
+        }
+    }
+    pub fn next_id(&mut self, ui_type: TypeId) -> u64{
+        let next = self.mapping.entry(ui_type).or_insert(0);
+        let result = *next;
+        *next += 1;
+        result
+    }
+}
+
+// a lazy static mutable hashmap that records the next id of each type of UI, with key being the typeid of the UI struct
+lazy_static!{
+    pub static ref UI_IDENTIFIER_MAP: Mutex<UIIdentifierGenerator> = Mutex::new(UIIdentifierGenerator::new());
+}
+
 pub struct UINode<B: BoxDimensions, C: UIChildren<B>> {
     pub box_dimensions: B,
     pub children: C,       // assuming horizontal layout
     pub meta: TextureMeta, // contains optional texture information
+    pub identifier: UIIdentifier,
+    pub version: u64,
 }
 
 impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
@@ -450,6 +487,8 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
             box_dimensions,
             children,
             meta: self.meta,
+            identifier: self.identifier,
+            version: self.version,
         }
     }
 }
@@ -457,7 +496,7 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
 // the canvas will be rendered on the entire screen
 pub struct UIRenderInstruction {
     pub version: u64, // cache key
-    pub id: u64,      // cache key
+    pub id: UIIdentifier,      // cache key
     pub texture_width: u32,
     pub texture_height: u32,
     pub location_left: f32, // inside parent
@@ -494,6 +533,12 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             box_dimensions: cell_dimensions,
             children: cell_children,
             meta: cell_meta,
+            // every cell is different
+            identifier: UIIdentifier {
+                name: "Cell".into(),
+                id: UI_IDENTIFIER_MAP.lock().unwrap().next_id(TypeId::of::<Cell>()),
+            },
+            version: 0,
         }
     }
     fn get_cell_lengths_and_positions_tangent_dir(
@@ -516,7 +561,8 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             cell_lengths_and_positions
         } else {
             let children_length_sum = children_lengths.iter().sum::<u32>();
-            let padding = (total_length - children_length_sum) / 2;
+            let padding = (total_length as i32 - children_length_sum as i32) / 2;
+            let padding = i32::max(padding, 0) as u32;
             let padding_factor = match alignment {
                 Either::Left(HorizontalAlignment::Left) => 0,
                 Either::Left(HorizontalAlignment::Center) => 1,
@@ -566,6 +612,8 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             box_dimensions,
             children,
             meta,
+            identifier,
+            version,
         } = self;
         let children: ChildrenAreCells = match children {
             StructuredChildren::NoChildren => {
@@ -644,7 +692,6 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                         .zip(cell_widths_and_heights_and_positions)
                         .map(
                             |(child, ((cell_width, cell_pos_x), (cell_height, cell_pos_y)))| {
-                                println!("cell pos x: {}", cell_pos_x);
                                 Self::wrap_node_with_cell(
                                     child,
                                     cell_width,
@@ -738,6 +785,8 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             box_dimensions,
             children,
             meta,
+            identifier,
+            version,
         }
     }
 }
@@ -752,6 +801,8 @@ impl UINode<BoxDimensionsAbsolute, ChildrenAreCells> {
             box_dimensions,
             children,
             meta,
+            identifier,
+            version,
         } = self;
         let ChildrenAreCells {
             cells,
@@ -785,8 +836,8 @@ impl UINode<BoxDimensionsAbsolute, ChildrenAreCells> {
         let location_right = location_left + normalized_width;
         let location_bottom = location_top + normalized_height;
         UIRenderInstruction {
-            version: 0, // to do
-            id: 0,      // to do
+            version: *version,
+            id: identifier.clone(),
             texture_width,
             texture_height,
             location_top,
@@ -809,6 +860,8 @@ impl UINode<BoxDimensionsAbsolute, ChildIsContent> {
             box_dimensions,
             children,
             meta,
+            identifier,
+            version,
         } = self;
         let texture_width = box_dimensions.width;
         let texture_height = box_dimensions.height;
@@ -830,8 +883,8 @@ impl UINode<BoxDimensionsAbsolute, ChildIsContent> {
         let location_right = location_left + normalized_width;
         let location_bottom = location_top + normalized_height;
         UIRenderInstruction {
-            version: 0, // to do
-            id: 0,      // to do
+            version: *version,
+            id: identifier.clone(),
             texture_width,
             texture_height,
             location_left,

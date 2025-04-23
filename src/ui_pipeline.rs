@@ -194,21 +194,20 @@ impl UIPipeline {
         queue: &wgpu::Queue,
         render_to_screen: bool,
     ) {
-        println!("enter render_helper");
         let version = render_instruction.version;
         let id = render_instruction.id;
         // if there is no child texture in the cache,
         // create the blank texture and execute the sub instructions
         // tmp
-        // let child_texture = CACHE.get(&CacheKey::Texture(TextureSource::UI { version, id }));
-        let child_texture = None;
+        let child_texture = CACHE.get(&CacheKey::Texture(TextureSource::UI { version, id: id.clone() }));
+        // let child_texture = None;
         let child_texture = match child_texture {
             Some(child_texture) => {
                 child_texture
             }
             None => {
-                let texture_width = render_instruction.texture_width;
-                let texture_height = render_instruction.texture_height;
+                let texture_width = u32::max(render_instruction.texture_width, 1);
+                let texture_height = u32::max(render_instruction.texture_height, 1);
                 let texture = MyTexture::create_render_attachment_texture(
                     device,
                     texture_width,
@@ -216,15 +215,15 @@ impl UIPipeline {
                     Some("ui_texture"),
                 );
                 
-                // queue the rendering of the child texture
-                let mut render_pass = Self::create_render_pass(encoder, &texture.view);
-                render_pass.set_pipeline(&self.pipeline);
-                render_pass
-                    .set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 let ui_renderable = render_instruction
                     .texture_meta
                     .to_ui_renderable(device, queue, self);
                 let material_bind_group = ui_renderable.material_bind_group;
+                // queue the rendering of the child texture
+                let mut render_pass = Self::create_render_pass(encoder, &texture.view);
+                render_pass.set_pipeline(&self.pipeline);
+                render_pass
+                    .set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);                
                 render_pass.set_bind_group(0, &material_bind_group, &[]);
                 let ui_instance = UIInstance {
                     location_left: -1.0,
@@ -243,10 +242,8 @@ impl UIPipeline {
                 render_pass.draw_indexed(0..6, 0, 0..1);
                 drop(render_pass);
                 // device.poll(wgpu::Maintain::Wait);
-                println!("submit rendering child texture");
                 // call the sub instructions before rendering the child texture so that they are queued first
                 for sub_instruction in render_instruction.sub_instructions {
-                    println!("executing sub instruction");
                     self.render_helper(encoder, sub_instruction, &texture.view, device, queue, false);
                 }
                 let result = Arc::new(CacheValue::Texture(texture));
@@ -279,7 +276,6 @@ impl UIPipeline {
             location_bottom: normalized_location_bottom,
             flip_vertically: !render_to_screen,
         };
-        println!("normalized location: {}, {}, {}, {}", normalized_location_left, normalized_location_top, normalized_location_right, normalized_location_bottom);
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance Buffer"),
             contents: bytemuck::cast_slice(&[ui_instance.to_raw()]),
@@ -310,7 +306,6 @@ impl UIPipeline {
         );
         render_pass.set_vertex_buffer(0, instance_buffer.slice(..));
         render_pass.draw_indexed(0..6, 0, 0..1);
-        println!("submit rendering parent texture");
         drop(render_pass);
 
 
