@@ -215,8 +215,8 @@ impl UINodeLength2 for RelativeLength {}
 pub trait UIChildren<B: BoxDimensions> {}
 
 impl<B: BoxDimensions> UIChildren<B> for StructuredChildren<B> {}
-impl UIChildren<BoxDimensionsAbsolute> for ChildrenAreCells {}
-impl UIChildren<BoxDimensionsAbsolute> for ChildIsContent {}
+impl UIChildren<BoxDimensionsWithGlobal> for ChildrenAreCells {}
+impl UIChildren<BoxDimensionsWithGlobal> for ChildIsContent {}
 
 #[derive(Clone)]
 pub struct BoxDimensionsRelative {
@@ -232,9 +232,20 @@ pub struct BoxDimensionsAbsolute {
     pub margin: [u32; 4],  // top, right, bottom, left
     pub padding: [u32; 4], // top, right, bottom, left
 }
+
+#[derive(Clone)]
+pub struct BoxDimensionsWithGlobal{
+    pub width: u32,
+    pub height: u32,
+    pub global_pos_x: u32,
+    pub global_pos_y: u32,
+    pub margin: [u32; 4],  // top, right, bottom, left
+    pub padding: [u32; 4], // top, right, bottom, left
+}
 pub trait BoxDimensions {}
 impl BoxDimensions for BoxDimensionsRelative {}
 impl BoxDimensions for BoxDimensionsAbsolute {}
+impl BoxDimensions for BoxDimensionsWithGlobal {}
 
 impl BoxDimensionsAbsolute {
     pub fn width_with_margin(&self) -> u32 {

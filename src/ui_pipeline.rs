@@ -1,7 +1,7 @@
 // it contains a RenderPipeline, can store drawables, and render them
 // different pipelines have different binding requirements, so the model types are different
 
-use std::{path::Iter, sync::Arc};
+use std::sync::Arc;
 
 use wgpu::{RenderPipeline, util::DeviceExt};
 
@@ -9,7 +9,7 @@ use crate::{
     cache::{CacheKey, CacheValue, CACHE},
     my_texture::{MyTexture, TextureSource},
     ui_node::UIRenderInstruction,
-    ui_renderable::{create_placeholder_texture, UIInstance, UIInstanceRaw},
+    ui_renderable::{UIInstance, UIInstanceRaw},
 };
 
 // model

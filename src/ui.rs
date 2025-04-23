@@ -5,7 +5,6 @@
 use std::any::TypeId;
 
 use either::Either;
-use rusttype::Font;
 
 use crate::{
     cache::{get_font, CacheValue},

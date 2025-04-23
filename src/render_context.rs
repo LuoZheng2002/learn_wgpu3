@@ -1,7 +1,7 @@
 use std::{collections::HashMap, mem, sync::Arc};
 
 use tokio::runtime::Runtime;
-use wgpu::{core::device, util::DeviceExt, CompositeAlphaMode};
+use wgpu::{util::DeviceExt, CompositeAlphaMode};
 use winit::window::Window;
 
 use crate::{
