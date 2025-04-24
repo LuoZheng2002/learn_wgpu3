@@ -11,6 +11,7 @@ use std::{any::TypeId, collections::HashMap, i32, sync::Mutex, vec};
 
 use either::Either;
 use lazy_static::lazy_static;
+use winit::keyboard::KeyCode;
 
 use crate::{ui::Cell, ui_renderable::TextureMeta};
 
@@ -354,6 +355,7 @@ pub struct UINode<B: BoxDimensions, C: UIChildren<B>> {
     pub meta: TextureMeta, // contains optional texture information
     pub identifier: UIIdentifier,
     pub version: u64,
+    pub event_handler: Option<Box<dyn FnMut(&UINodeEvent)>>,
 }
 
 impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
@@ -508,6 +510,7 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
             meta: self.meta,
             identifier: self.identifier,
             version: self.version,
+            event_handler: self.event_handler,
         }
     }
 }
@@ -579,6 +582,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                     .next_id(TypeId::of::<Cell>()),
             },
             version: 0,
+            event_handler: None,
         }
     }
     fn get_cell_lengths_and_positions_tangent_dir(
@@ -663,6 +667,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             meta,
             identifier,
             version,
+            event_handler,
         } = self;
         let width_difference = parent_width as i32 - box_dimensions.width_with_margin() as i32;
         let width_difference = i32::max(width_difference, 0) as u32;
@@ -876,6 +881,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             meta,
             identifier,
             version,
+            event_handler,
         }
     }
 }
@@ -888,6 +894,7 @@ impl UINode<BoxDimensionsWithGlobal, ChildrenAreCells> {
             meta,
             identifier,
             version,
+            event_handler,
         } = self;
         let children = children
             .cells
@@ -901,6 +908,7 @@ impl UINode<BoxDimensionsWithGlobal, ChildrenAreCells> {
             meta,
             identifier,
             version,
+            event_handler,
         }
     }
 }
@@ -912,6 +920,7 @@ impl UINode<BoxDimensionsWithGlobal, ChildIsContent> {
             meta,
             identifier,
             version,
+            event_handler,
         } = self;
         let children = vec![children.content.to_unified()];
         let children = UnifiedChildren { children };
@@ -921,6 +930,7 @@ impl UINode<BoxDimensionsWithGlobal, ChildIsContent> {
             meta,
             identifier,
             version,
+            event_handler,
         }
     }
 }
@@ -937,6 +947,7 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
             meta,
             identifier,
             version,
+            event_handler: _,
         } = self;
         let texture_width = box_dimensions.width;
         let texture_height = box_dimensions.height;
@@ -977,6 +988,7 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
             meta,
             identifier,
             version,
+            event_handler: _,
         } = self;
         let pad = " ".repeat((indent * 4) as usize);
         let mut result = format!(
@@ -1000,4 +1012,27 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         }
         result
     }
+    pub fn handle_event(&mut self, event: &UINodeEvent){
+        if let Some(event_handler) = &mut self.event_handler {
+            event_handler(event);
+        }
+        for child in self.children.children.iter_mut() {
+            child.handle_event(event);
+        }
+    }
+}
+
+
+pub struct UINodeEvent{
+    pub mouse_x: u32,
+    pub mouse_y: u32,
+    pub mouse_left: bool,
+    pub mouse_right: bool,
+    pub mouse_left_down: bool, // the frame that the button changes from up to down
+    pub mouse_right_down: bool,
+    pub mouse_left_up: bool, // the frame that the button changes from down to up
+    pub mouse_right_up: bool,
+    pub key_pressed: bool,
+    pub key_down: bool,
+    pub key_code: KeyCode,
 }

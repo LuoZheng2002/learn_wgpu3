@@ -7,10 +7,9 @@ use std::any::TypeId;
 use either::Either;
 
 use crate::{
-    cache::{CacheValue, get_font},
+    cache::{get_font, CacheValue},
     ui_node::{
-        self, BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength,
-        StructuredChildren, UI_IDENTIFIER_MAP, UIIdentifier, UINode, VerticalAlignment,
+        self, BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength, StructuredChildren, UIIdentifier, UINode, UINodeEvent, VerticalAlignment, UI_IDENTIFIER_MAP
     },
     ui_renderable::TextureMeta,
 };
@@ -181,6 +180,7 @@ impl ToUINode for Char {
             },
             identifier: self.id.clone(),
             version: 0,
+            event_handler: None,
         }
     }
 }
@@ -213,6 +213,7 @@ impl ToUINode for Text {
             },
             identifier: self.id.clone(),
             version: self.version,
+            event_handler: None,
         }
     }
 }
@@ -266,6 +267,9 @@ impl Button {
     pub fn set_child(&mut self, child: Box<dyn ToUINode>) {
         self.child = Some(child);
     }
+    pub fn handle_event(&mut self, event: &UINodeEvent) {
+        
+    }
 }
 impl ToUINode for Button {
     fn to_ui_node(
@@ -290,6 +294,7 @@ impl ToUINode for Button {
             },
             identifier: self.id.clone(),
             version: self.version,
+            event_handler: Some(Box::new(|event| self.handle_event(event))),
         }
     }
 }
@@ -390,6 +395,7 @@ impl ToUINode for Span {
             meta: self.texture.clone(),
             identifier: self.id.clone(),
             version: self.version,
+            event_handler: None,
         }
     }
 }
