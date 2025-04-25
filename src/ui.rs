@@ -2,14 +2,16 @@
 // layout information
 // an element can have: zero children, one child, or many children
 
-use std::any::TypeId;
+use std::{any::TypeId, sync::{Arc, Mutex}};
 
 use either::Either;
+use wgpu::naga::back::spv;
+use winit::event;
 
 use crate::{
     cache::{get_font, CacheValue},
     ui_node::{
-        self, BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength, StructuredChildren, UIIdentifier, UINode, UINodeEvent, VerticalAlignment, UI_IDENTIFIER_MAP
+        self, BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength, StructuredChildren, UIIdentifier, UINode, UINodeEventProcessed, UINodeEventRaw, VerticalAlignment, UI_IDENTIFIER_MAP
     },
     ui_renderable::TextureMeta,
 };
@@ -39,8 +41,7 @@ pub enum Children {
 
 pub struct Cell;
 
-pub struct Text {
-    pub text: Vec<(char, Char)>,
+pub struct Text {    
     pub font_path: String,
     pub scale: f32,
     pub margin: [RelativeLength; 4],
@@ -49,7 +50,22 @@ pub struct Text {
     pub width: BoundedLength,
     pub height: BoundedLength,
     pub id: UIIdentifier,
+    pub text_state: Arc<Mutex<TextState>>,
+}
+
+pub struct TextState {
+    pub state_changed: bool,
+    pub change_parent_state: bool,
     pub version: u64,
+    pub text: Vec<(char, Char)>,
+}
+
+impl TextState{
+    pub fn set_text(&mut self, text: String, font_path: String, scale: f32) {
+        self.text = Text::chars_to_nodes(text, font_path, scale);
+        self.state_changed = true;
+        self.change_parent_state = true;
+    }
 }
 
 impl Text {
@@ -88,8 +104,13 @@ impl Text {
             id,
             name: format!("Text"),
         };
-        Self {
+        let text_state = Arc::new(Mutex::new(TextState {
+            state_changed: false,
+            change_parent_state: false,
+            version: 0,
             text,
+        }));
+        Self {
             font_path,
             scale,
             margin,
@@ -98,11 +119,13 @@ impl Text {
             width,
             height,
             id,
-            version: 0,
+            text_state,
         }
     }
     pub fn set_text(&mut self, text: String) {
-        self.text = Self::chars_to_nodes(text, self.font_path.clone(), self.scale);
+        let mut text_state = self.text_state.lock().unwrap();
+        text_state.text = Self::chars_to_nodes(text, self.font_path.clone(), self.scale);
+        text_state.state_changed = true;
     }
 }
 
@@ -181,6 +204,7 @@ impl ToUINode for Char {
             identifier: self.id.clone(),
             version: 0,
             event_handler: None,
+            state_changed_handler: None,
         }
     }
 }
@@ -189,17 +213,44 @@ impl ToUINode for Text {
     fn to_ui_node(
         &self,
     ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
-        let children_ui_nodes = self
-            .text
-            .iter()
-            .map(|(_, char)| char.to_ui_node())
-            .collect::<Vec<_>>();
+        
         let box_dimensions = BoxDimensionsRelative {
             width: self.width.clone(),
             height: self.height.clone(),
             margin: self.margin.clone(),
             padding: self.padding.clone(),
         };
+        let event_handler = {
+            let text_state = self.text_state.clone();
+            let event_handler = move |_event: &UINodeEventProcessed|->bool {
+                let mut text_state = text_state.lock().unwrap();
+                let change_parent_state = text_state.change_parent_state;
+                text_state.change_parent_state = false;
+                change_parent_state
+            };
+            Some(Box::new(event_handler) as Box<dyn Fn(&UINodeEventProcessed)->bool>)
+        };
+
+        let state_changed_handler = {
+            let text_state = self.text_state.clone();
+            let state_changed_handler = move ||{
+                let mut text_state = text_state.lock().unwrap();
+                text_state.state_changed = true;
+                println!("Text state changed");
+            };
+            Some(Box::new(state_changed_handler) as Box<dyn Fn()>)
+        };
+        let mut text_state = self.text_state.lock().unwrap();
+        if text_state.state_changed {
+            text_state.state_changed = false;
+            text_state.version += 1;
+        }
+        let children_ui_nodes = text_state
+            .text
+            .iter()
+            .map(|(_, char)| char.to_ui_node())
+            .collect::<Vec<_>>();
+
         UINode {
             box_dimensions,
             children: crate::ui_node::StructuredChildren::HorizontalLayout {
@@ -212,8 +263,9 @@ impl ToUINode for Text {
                 path: "assets/placeholder.png".into(),
             },
             identifier: self.id.clone(),
-            version: self.version,
-            event_handler: None,
+            version: text_state.version,
+            event_handler,
+            state_changed_handler,
         }
     }
 }
@@ -222,10 +274,18 @@ pub struct Button {
     pub box_dimensions: BoxDimensionsRelative,
     child: Option<Box<dyn ToUINode>>,
     pub id: UIIdentifier,
-    pub version: u64,
+    pub button_state: Arc<Mutex<ButtonState>>,
+    pub click_callback: Option<Arc<dyn Fn()>>,
 }
 
 // callback function
+
+pub struct ButtonState{
+    pub hovered: bool,
+    pub clicked: bool,
+    pub state_changed: bool,
+    pub version: u64,
+}
 
 impl Button {
     pub fn new(
@@ -233,7 +293,7 @@ impl Button {
         height: BoundedLength,
         margin: Either<RelativeLength, [RelativeLength; 4]>,
         padding: Either<RelativeLength, [RelativeLength; 4]>,
-        color: cgmath::Vector4<f32>,
+        click_callback: Option<Box<dyn Fn()>>,
     ) -> Self {
         let margin = match margin {
             Either::Left(m) => [m.clone(), m.clone(), m.clone(), m.clone()],
@@ -257,17 +317,28 @@ impl Button {
             id,
             name: format!("Button"),
         };
+        let button_state = Arc::new(Mutex::new(ButtonState {
+            hovered: false,
+            clicked: false,
+            state_changed: false,
+            version: 0,
+        }));
+        let click_callback = match click_callback {
+            Some(callback) => Some(Arc::new(callback) as Arc<dyn Fn()>),
+            None => None,
+        };
         Self {
             box_dimensions,
             child: None,
             id,
-            version: 0,
+            button_state,
+            click_callback,
         }
     }
     pub fn set_child(&mut self, child: Box<dyn ToUINode>) {
         self.child = Some(child);
     }
-    pub fn handle_event(&mut self, event: &UINodeEvent) {
+    pub fn handle_event(&mut self, event: &UINodeEventRaw) {
         
     }
 }
@@ -286,15 +357,65 @@ impl ToUINode for Button {
             }
             None => crate::ui_node::StructuredChildren::NoChildren,
         };
+        let event_handler = {
+            let button_state = self.button_state.clone();
+            let click_callback = self.click_callback.clone();
+            let event_handler = move |event: &UINodeEventProcessed|->bool {
+                let mut button_state = button_state.lock().unwrap();
+                let prev_button_clicked = button_state.clicked;
+                let prev_button_hovered = button_state.hovered;
+                if event.left_clicked_inside{
+                    button_state.clicked = true;
+                    if let Some(callback) = click_callback.as_ref() {
+                        callback();
+                    }
+                } else if event.left_released {
+                    button_state.clicked = false;
+                }
+                if event.mouse_hover{
+                    button_state.hovered = true;
+                } else {
+                    button_state.hovered = false;
+                }
+                button_state.clicked != prev_button_clicked || button_state.hovered != prev_button_hovered
+            };
+            Some(Box::new(event_handler) as Box<dyn Fn(&UINodeEventProcessed)->bool>)
+        };
+        let state_changed_handler = {
+            let button_state = self.button_state.clone();
+            let state_changed_handler = move ||{
+                let mut button_state = button_state.lock().unwrap();
+                button_state.state_changed = true;
+                println!("Button state changed");
+            };
+            Some(Box::new(state_changed_handler) as Box<dyn Fn()>)
+        };
+        let mut button_state = self.button_state.lock().unwrap();        
+        let meta = if button_state.clicked {
+            TextureMeta::Texture {
+                path: "assets/button3.jpg".into(),
+            }}
+            else if button_state.hovered{
+                TextureMeta::Texture {
+                    path: "assets/button2.jpg".into(),
+                }
+            }else{
+                TextureMeta::Texture {
+                    path: "assets/button.jpg".into(),
+            }
+        };
+        if button_state.state_changed {
+            button_state.state_changed = false;
+            button_state.version += 1;
+        }
         UINode {
             box_dimensions: self.box_dimensions.clone(),
             children,
-            meta: TextureMeta::Texture {
-                path: "assets/placeholder.png".into(),
-            },
+            meta,
             identifier: self.id.clone(),
-            version: self.version,
-            event_handler: Some(Box::new(|event| self.handle_event(event))),
+            version: button_state.version,
+            event_handler,
+            state_changed_handler,
         }
     }
 }
@@ -313,7 +434,7 @@ pub struct Span {
     pub uniform_division: bool,
     pub texture: TextureMeta,
     pub id: UIIdentifier,
-    pub version: u64,
+    pub span_state: Arc<Mutex<SpanState>>,
 }
 
 impl Span {
@@ -350,6 +471,10 @@ impl Span {
             id,
             name: format!("Span"),
         };
+        let span_state = Arc::new(Mutex::new(SpanState {
+            state_changed: false,
+            version: 0,
+        }));
         Self {
             direction,
             children: Vec::new(),
@@ -359,7 +484,7 @@ impl Span {
             uniform_division,
             texture,
             id,
-            version: 0,
+            span_state,
         }
     }
     pub fn push_child(&mut self, child: Box<dyn ToUINode>) {
@@ -367,10 +492,30 @@ impl Span {
     }
 }
 
+pub struct SpanState{
+    pub state_changed: bool,
+    pub version: u64,
+}
+
 impl ToUINode for Span {
     fn to_ui_node(
         &self,
     ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
+        let state_changed_handler = {
+            let span_state = self.span_state.clone();
+            let state_changed_handler = move ||{
+                let mut span_state = span_state.lock().unwrap();
+                span_state.state_changed = true;
+                println!("Span state changed");
+            };
+            Some(Box::new(state_changed_handler) as Box<dyn Fn()>)
+        };
+        let mut span_state = self.span_state.lock().unwrap();
+        if span_state.state_changed {
+            span_state.state_changed = false;
+            span_state.version += 1;
+        }
+
         let children_ui_nodes = self
             .children
             .iter()
@@ -394,8 +539,9 @@ impl ToUINode for Span {
             },
             meta: self.texture.clone(),
             identifier: self.id.clone(),
-            version: self.version,
+            version: span_state.version,
             event_handler: None,
+            state_changed_handler,
         }
     }
 }

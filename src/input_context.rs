@@ -8,6 +8,7 @@ pub struct InputContext {
     key_states: HashMap<KeyCode, bool>,
     key_down_flags: HashMap<KeyCode, bool>,
     key_up_flags: HashMap<KeyCode, bool>,
+    current_key_down: Option<KeyCode>,
     mouse_left: bool,
     mouse_left_pressed_flag: bool,
     mouse_left_released_flag: bool,
@@ -20,6 +21,7 @@ pub struct InputContext {
 
 impl InputContext {
     pub fn handle_window_event(&mut self, event: &WindowEvent) {
+        self.current_key_down = None;
         match event {
             WindowEvent::KeyboardInput {
                 device_id: _,
@@ -30,6 +32,7 @@ impl InputContext {
                 if let PhysicalKey::Code(key_code) = physical_key {
                     match event.state {
                         ElementState::Pressed => {
+                            self.current_key_down = Some(key_code);
                             let prev_state = self.key_states.insert(key_code, true);
                             let prev_pressed = prev_state.unwrap_or(false);
                             if !prev_pressed {
@@ -107,13 +110,9 @@ impl InputContext {
                     _ => {}
                 }
             }
-            // WindowEvent::CursorMoved { device_id: _, position }=> {
-            //     self.mouse_delta = match self.cursor_position {
-            //         Some((x, y)) => (position.x - x, position.y - y),
-            //         None => (0., 0.),
-            //     };
-            //     self.cursor_position = Some((position.x, position.y));
-            // }
+            WindowEvent::CursorMoved { device_id: _, position }=> {
+                self.cursor_position = Some((position.x, position.y));
+            }
             _ => {}
         }
     }
@@ -136,6 +135,9 @@ impl InputContext {
 
     pub fn get_key(&mut self, key: KeyCode) -> bool {
         self.key_states.entry(key).or_insert(false).clone()
+    }
+    pub fn get_current_key_down(&mut self) -> Option<KeyCode> {
+        self.current_key_down
     }
 
     pub fn get_key_up(&mut self, key: KeyCode) -> bool {

@@ -13,7 +13,7 @@ use either::Either;
 use lazy_static::lazy_static;
 use winit::keyboard::KeyCode;
 
-use crate::{ui::Cell, ui_renderable::TextureMeta};
+use crate::{state, ui::Cell, ui_renderable::TextureMeta};
 
 #[derive(Clone)]
 pub enum HorizontalAlignment {
@@ -355,7 +355,8 @@ pub struct UINode<B: BoxDimensions, C: UIChildren<B>> {
     pub meta: TextureMeta, // contains optional texture information
     pub identifier: UIIdentifier,
     pub version: u64,
-    pub event_handler: Option<Box<dyn FnMut(&UINodeEvent)>>,
+    pub event_handler: Option<Box<dyn Fn(&UINodeEventProcessed)->bool>>,
+    pub state_changed_handler: Option<Box<dyn Fn()>>,
 }
 
 impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
@@ -511,6 +512,7 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
             identifier: self.identifier,
             version: self.version,
             event_handler: self.event_handler,
+            state_changed_handler: self.state_changed_handler,
         }
     }
 }
@@ -583,6 +585,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             },
             version: 0,
             event_handler: None,
+            state_changed_handler: None,
         }
     }
     fn get_cell_lengths_and_positions_tangent_dir(
@@ -668,6 +671,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             identifier,
             version,
             event_handler,
+            state_changed_handler
         } = self;
         let width_difference = parent_width as i32 - box_dimensions.width_with_margin() as i32;
         let width_difference = i32::max(width_difference, 0) as u32;
@@ -882,6 +886,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             identifier,
             version,
             event_handler,
+            state_changed_handler,
         }
     }
 }
@@ -895,6 +900,7 @@ impl UINode<BoxDimensionsWithGlobal, ChildrenAreCells> {
             identifier,
             version,
             event_handler,
+            state_changed_handler,
         } = self;
         let children = children
             .cells
@@ -909,6 +915,7 @@ impl UINode<BoxDimensionsWithGlobal, ChildrenAreCells> {
             identifier,
             version,
             event_handler,
+            state_changed_handler,
         }
     }
 }
@@ -921,6 +928,7 @@ impl UINode<BoxDimensionsWithGlobal, ChildIsContent> {
             identifier,
             version,
             event_handler,
+            state_changed_handler,
         } = self;
         let children = vec![children.content.to_unified()];
         let children = UnifiedChildren { children };
@@ -931,6 +939,7 @@ impl UINode<BoxDimensionsWithGlobal, ChildIsContent> {
             identifier,
             version,
             event_handler,
+            state_changed_handler,
         }
     }
 }
@@ -948,6 +957,7 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
             identifier,
             version,
             event_handler: _,
+            state_changed_handler: _,
         } = self;
         let texture_width = box_dimensions.width;
         let texture_height = box_dimensions.height;
@@ -989,6 +999,7 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
             identifier,
             version,
             event_handler: _,
+            state_changed_handler: _,
         } = self;
         let pad = " ".repeat((indent * 4) as usize);
         let mut result = format!(
@@ -1012,18 +1023,67 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         }
         result
     }
-    pub fn handle_event(&mut self, event: &UINodeEvent){
-        if let Some(event_handler) = &mut self.event_handler {
-            event_handler(event);
+    fn process_event(&self, event: &UINodeEventRaw) -> UINodeEventProcessed {
+        let mut result = UINodeEventProcessed {
+            left_clicked_inside: false,
+            left_released: false,
+            right_clicked_inside: false,
+            right_released: false,
+            mouse_hover: false,
+            lose_focus: false,
+            key_down: event.key_down,
+        };
+        let box_dimensions = &self.box_dimensions;
+        if event.mouse_x >= box_dimensions.global_pos_x
+            && event.mouse_x <= box_dimensions.global_pos_x + box_dimensions.width
+            && event.mouse_y >= box_dimensions.global_pos_y
+            && event.mouse_y <= box_dimensions.global_pos_y + box_dimensions.height
+        {
+            result.mouse_hover = true;
         }
-        for child in self.children.children.iter_mut() {
-            child.handle_event(event);
+        if result.mouse_hover {
+            if event.mouse_left_down {
+                result.left_clicked_inside = true;
+            }
+            
+            if event.mouse_right_down {
+                result.right_clicked_inside = true;
+            }
         }
+        else{
+            if event.mouse_left_down || event.mouse_right_down {
+                result.lose_focus = true;
+            }
+        }
+        if event.mouse_left_up {
+            result.left_released = true;
+        }
+        if event.mouse_right_up {
+            result.right_released = true;
+        }
+        result
+    }
+    /// the return value specifies whether the current UI element and its parent have a state change
+    pub fn handle_event(&self, event: &UINodeEventRaw)->bool{
+        let event_processed = self.process_event(event);
+        let mut state_changed = false;
+        if let Some(event_handler) = &self.event_handler {
+            state_changed  = state_changed || event_handler(&event_processed);
+        }        
+        for child in self.children.children.iter() {
+            state_changed = state_changed || child.handle_event(&event);
+        }
+        if state_changed{
+            if let Some(state_changed_handler) = &self.state_changed_handler {
+                state_changed_handler();
+            }
+        }
+        state_changed
     }
 }
 
 
-pub struct UINodeEvent{
+pub struct UINodeEventRaw{
     pub mouse_x: u32,
     pub mouse_y: u32,
     pub mouse_left: bool,
@@ -1032,7 +1092,15 @@ pub struct UINodeEvent{
     pub mouse_right_down: bool,
     pub mouse_left_up: bool, // the frame that the button changes from down to up
     pub mouse_right_up: bool,
-    pub key_pressed: bool,
-    pub key_down: bool,
-    pub key_code: KeyCode,
+    pub key_down: Option<KeyCode>, // the frame that the key changes from up to down
+}
+
+pub struct UINodeEventProcessed{
+    pub left_clicked_inside: bool, // whether the mouse left button changes from up to down inside the element
+    pub left_released: bool, // whether the mouse left button changes from down to up
+    pub right_clicked_inside: bool, // whether the mouse right button changes from up to down inside the element
+    pub right_released: bool, // whether the mouse right button changes from down to up
+    pub mouse_hover: bool, // whether the mouse is inside the element
+    pub lose_focus: bool, // whether the mouse is left clicked / right clicked outside the element
+    pub key_down: Option<KeyCode>, // the key that is pressed down
 }

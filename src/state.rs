@@ -1,12 +1,12 @@
-use std::{collections::HashMap, time::Instant};
+use std::{collections::HashMap, sync::{Arc, Mutex}, time::Instant};
 
 use cgmath::{Euler, Quaternion};
 use either::Either;
 use winit::keyboard::KeyCode;
 
 use crate::{
-    input_context::InputContext, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{Button, Span, SpanDirection, Text, ToUINode}, ui_node::{
-        BoundedLength, HorizontalAlignment, RelativeLength, UIRenderInstruction, VerticalAlignment,
+    input_context::InputContext, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{Button, Span, SpanDirection, Text, TextState, ToUINode}, ui_node::{
+        BoundedLength, HorizontalAlignment, RelativeLength, UINodeEventRaw, UIRenderInstruction, VerticalAlignment
     }, ui_renderable::TextureMeta
 };
 
@@ -27,6 +27,7 @@ pub struct State {
     pub light_position: cgmath::Vector3<f32>,
     pub fps: u32,
     pub canvas: Option<Span>,
+    pub text_state: Option<Arc<Mutex<TextState>>>,
 }
 
 impl State {
@@ -60,21 +61,10 @@ impl State {
                 z: 1.0,
                 w: 1.0,
             },
-            BoundedLength::fixed_pixels(500),
-            BoundedLength::fixed_pixels(400),
-        );
-        let button = Button::new(
             BoundedLength::fixed_pixels(300),
-            BoundedLength::fixed_pixels(100),
-            Either::Left(RelativeLength::Pixels(20)),
-            Either::Left(RelativeLength::Pixels(20)),
-            cgmath::Vector4 {
-                x: 0.0,
-                y: 1.0,
-                z: 0.0,
-                w: 1.0,
-            },
+            BoundedLength::fixed_pixels(200),
         );
+        self.text_state = Some(text.text_state.clone());
         let span2 = Span::new(
             SpanDirection::Horizontal,
             BoundedLength::fixed_pixels(80),
@@ -121,6 +111,13 @@ impl State {
                 path: "assets/grass.jpg".into(),
             },
         );
+        let button = Button::new(
+            BoundedLength::fixed_pixels(300),
+            BoundedLength::fixed_pixels(100),
+            Either::Left(RelativeLength::Pixels(20)),
+            Either::Left(RelativeLength::Pixels(20)),
+            None,
+        );
         let mut span = Span::new(
             SpanDirection::Horizontal,
             BoundedLength::fixed_dependent(RelativeLength::RelativeScreenWidth(0.9)),
@@ -134,9 +131,10 @@ impl State {
                 path: "assets/genshin.jpg".into(),
             },
         );
-        span.push_child(Box::new(span2));
-        span.push_child(Box::new(span3));
+        // span.push_child(Box::new(span2));
+        // span.push_child(Box::new(span3));
         span.push_child(Box::new(text));
+        span.push_child(Box::new(button));
         // span.push_child(Box::new(button));
         self.canvas = Some(span);
     }
@@ -150,6 +148,7 @@ impl State {
             self.fps = self.accumulated_frame_num;
             self.accumulated_frame_num = 0;
             *fps_timer = Instant::now();
+            self.text_state.as_ref().unwrap().lock().unwrap().set_text(format!("FPS: {}", self.fps).to_string(), "assets/consolas.ttf".to_string(), 50.0 );
         } else {
             self.accumulated_frame_num += 1;
         }
@@ -221,6 +220,21 @@ impl State {
         if input_context.get_key_down(KeyCode::Space){
             println!("{}", ui_node.to_string(0));
         }
+        let cursor_position = input_context.mouse_position();
+        let cursor_position = cursor_position.unwrap_or((0.0, 0.0));
+        let ui_node_event = UINodeEventRaw{
+            mouse_x: cursor_position.0 as u32,
+            mouse_y: cursor_position.1 as u32,
+            mouse_left: input_context.mouse_left(),
+            mouse_left_down: input_context.mouse_left_down(),
+            mouse_left_up: input_context.mouse_left_up(),
+            mouse_right: input_context.mouse_right(),
+            mouse_right_down: input_context.mouse_right_down(),
+            mouse_right_up: input_context.mouse_right_up(),
+            key_down: input_context.get_current_key_down()
+        };
+        // println!("mouse position: {:?}", cursor_position);
+        ui_node.handle_event(&ui_node_event);
         let render_instruction = ui_node.to_ui_render_instruction(screen_width, screen_height);
         self.submit_ui_render_instruction(render_instruction);
         // panic!()
@@ -241,6 +255,7 @@ impl Default for State {
             light_position: cgmath::Vector3::new(0.0, 0.0, 0.0),
             fps: 0,
             canvas: None,
+            text_state: None,
         }
     }
 }
