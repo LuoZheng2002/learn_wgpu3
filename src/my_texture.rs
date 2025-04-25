@@ -27,10 +27,6 @@ pub enum TextureSource {
         green: u8,
         blue: u8,
     },
-    UI {
-        version: u64,
-        id: UIIdentifier,
-    },
 }
 
 impl MyTexture {

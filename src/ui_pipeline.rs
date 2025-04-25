@@ -6,9 +6,9 @@ use std::sync::Arc;
 use wgpu::{RenderPipeline, util::DeviceExt};
 
 use crate::{
-    cache::{CACHE, CacheKey, CacheValue},
+    cache::{CacheKey, CacheValue, CACHE},
     my_texture::{MyTexture, TextureSource},
-    ui_node::UIRenderInstruction,
+    ui_node::{UIIdentifier, UIRenderInstruction},
     ui_renderable::{UIInstance, UIInstanceRaw},
 };
 
@@ -196,13 +196,24 @@ impl UIPipeline {
     ) {
         let version = render_instruction.version;
         let id = render_instruction.id;
-        // if there is no child texture in the cache,
-        // create the blank texture and execute the sub instructions
-        // tmp
-        let child_texture = CACHE.get(&CacheKey::Texture(TextureSource::UI {
-            version,
-            id: id.clone(),
-        }));
+        let child_texture = CACHE.get(&CacheKey::UITexture(id.clone()));
+        // turn an outdated texture into a None
+        let child_texture = match child_texture {
+            Some(child_texture) => {
+                let (texture, cached_version) = match child_texture.as_ref() {
+                    CacheValue::UITexture { texture, version } => (texture, version),
+                    _ => unreachable!(),
+                };
+                if *cached_version == version {
+                    Some(child_texture)
+                }else{
+                    None
+                }
+            }
+            None => {
+                None
+            }
+        };
         // let child_texture = None;
         let child_texture = match child_texture {
             Some(child_texture) => child_texture,
@@ -254,12 +265,11 @@ impl UIPipeline {
                         false,
                     );
                 }
-                let result = Arc::new(CacheValue::Texture(texture));
+                let result = Arc::new(CacheValue::UITexture { texture, version });
                 CACHE.insert(
-                    CacheKey::Texture(TextureSource::UI { version, id }),
+                    CacheKey::UITexture(id),
                     result.clone(),
                 );
-
                 result
             }
         };

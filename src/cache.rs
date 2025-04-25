@@ -5,10 +5,7 @@ use moka::sync::Cache;
 use rusttype::Font;
 
 use crate::{
-    model_data::ModelData,
-    model_meta::ModelMeta,
-    my_texture::{MyTexture, TextureSource},
-    ui_renderable::{TextureMeta, UIRenderable},
+    model_data::ModelData, model_meta::ModelMeta, my_texture::{MyTexture, TextureSource}, ui_node::UIIdentifier, ui_renderable::{TextureMeta, UIRenderable}
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -16,6 +13,7 @@ pub enum CacheKey {
     ModelMeta(ModelMeta),
     UIRenderableMeta(TextureMeta),
     Texture(TextureSource),
+    UITexture(UIIdentifier), // to do
     Font(String),
     PlaceholderTexture,
     Placeholder,
@@ -25,6 +23,10 @@ pub enum CacheValue {
     ModelData(ModelData),
     UIRenderable(UIRenderable),
     Texture(MyTexture),
+    UITexture{
+        texture: MyTexture,
+        version: u64,
+    },
     Font(Font<'static>),
     Placeholder,
 }
@@ -36,7 +38,7 @@ lazy_static! {
         // Create a cache with a maximum size of 100 items and an expiration time of 60 seconds.
         Cache::builder()
             .max_capacity(100) // Maximum number of items in the cache
-            .time_to_live(std::time::Duration::from_secs(60)) // Time to live for each item in the cache
+            // .time_to_live(std::time::Duration::from_secs(60)) // Time to live for each item in the cache
             .build()
     };
 }

@@ -13,7 +13,43 @@ use either::Either;
 use lazy_static::lazy_static;
 use winit::keyboard::KeyCode;
 
-use crate::{state, ui::Cell, ui_renderable::TextureMeta};
+use crate::{state, ui::UICell, ui_renderable::TextureMeta};
+
+
+
+pub trait ToUINode {
+    fn to_ui_node(
+        &self,
+    ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>>;
+    fn update_and_to_instruction(
+        &self,        
+        screen_width: u32,
+        screen_height: u32,
+        event: &UINodeEventRaw,
+    )->UIRenderInstruction{
+        let ui_node = self.to_ui_node();
+        let ui_node = ui_node.calculate_dimensions(screen_width, screen_height, screen_width, screen_height);
+        let ui_node = ui_node.flatten_children(
+            0, 0, 
+            screen_width, 
+            screen_height, 
+            HorizontalAlignment::Left, 
+        VerticalAlignment::Top);
+        let ui_node = ui_node.to_unified();
+        ui_node.handle_event(event);
+        let ui_node = self.to_ui_node();
+        let ui_node = ui_node.calculate_dimensions(screen_width, screen_height, screen_width, screen_height);
+        let ui_node = ui_node.flatten_children(
+            0, 0, 
+            screen_width, 
+            screen_height, 
+            HorizontalAlignment::Left, 
+        VerticalAlignment::Top);
+        let ui_node = ui_node.to_unified();
+        ui_node.to_ui_render_instruction(screen_width, screen_height)
+    }
+}
+
 
 #[derive(Clone)]
 pub enum HorizontalAlignment {
@@ -581,7 +617,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                 id: UI_IDENTIFIER_MAP
                     .lock()
                     .unwrap()
-                    .next_id(TypeId::of::<Cell>()),
+                    .next_id(TypeId::of::<UICell>()),
             },
             version: 0,
             event_handler: None,

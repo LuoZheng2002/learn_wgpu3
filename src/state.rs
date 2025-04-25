@@ -2,11 +2,10 @@ use std::{collections::HashMap, sync::{Arc, Mutex}, time::Instant};
 
 use cgmath::{Euler, Quaternion};
 use either::Either;
-use winit::keyboard::KeyCode;
 
 use crate::{
-    input_context::InputContext, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{Button, Span, SpanDirection, Text, TextState, ToUINode}, ui_node::{
-        BoundedLength, HorizontalAlignment, RelativeLength, UINodeEventRaw, UIRenderInstruction, VerticalAlignment
+    input_context::InputContext, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{button::Button, span::{Span, SpanDirection}, text::{Text, TextState}}, ui_node::{
+        BoundedLength, HorizontalAlignment, RelativeLength, ToUINode, UINodeEventRaw, UIRenderInstruction, VerticalAlignment
     }, ui_renderable::TextureMeta
 };
 
@@ -189,8 +188,8 @@ impl State {
             )),
             scale: cgmath::Vector3::new(scale, scale, scale),
         };
-        self.submit_renderable(model_meta.clone(), instance1);
-        self.submit_renderable(model_meta.clone(), instance2);
+        // self.submit_renderable(model_meta.clone(), instance1);
+        // self.submit_renderable(model_meta.clone(), instance2);
 
         // let ui_meta1 = UIRenderableMeta::Font { character: 'F' };
         // let ui_instance1 = UIInstance {
@@ -205,21 +204,8 @@ impl State {
         // to do
         let screen_width = window_size.width;
         let screen_height = window_size.height;
-        let ui_node = self.canvas.as_ref().unwrap().to_ui_node();
-        let ui_node =
-            ui_node.calculate_dimensions(screen_width, screen_height, screen_width, screen_height);
-        let ui_node = ui_node.flatten_children(
-            0,
-            0,
-            screen_width,
-            screen_height,
-            HorizontalAlignment::Left,
-            VerticalAlignment::Top,
-        );
-        let ui_node = ui_node.to_unified();
-        if input_context.get_key_down(KeyCode::Space){
-            println!("{}", ui_node.to_string(0));
-        }
+        let canvas = self.canvas.as_ref().unwrap();
+
         let cursor_position = input_context.mouse_position();
         let cursor_position = cursor_position.unwrap_or((0.0, 0.0));
         let ui_node_event = UINodeEventRaw{
@@ -233,9 +219,7 @@ impl State {
             mouse_right_up: input_context.mouse_right_up(),
             key_down: input_context.get_current_key_down()
         };
-        // println!("mouse position: {:?}", cursor_position);
-        ui_node.handle_event(&ui_node_event);
-        let render_instruction = ui_node.to_ui_render_instruction(screen_width, screen_height);
+        let render_instruction = canvas.update_and_to_instruction(screen_width, screen_height, &ui_node_event);
         self.submit_ui_render_instruction(render_instruction);
         // panic!()
     }
