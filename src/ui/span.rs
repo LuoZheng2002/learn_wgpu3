@@ -2,7 +2,7 @@ use std::{any::TypeId, sync::{Arc, Mutex}};
 
 use either::Either;
 
-use crate::{ui_node::{BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
+use crate::{ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
 
 pub enum SpanDirection {
     Horizontal,
@@ -51,10 +51,10 @@ impl Span {
             .lock()
             .unwrap()
             .next_id(TypeId::of::<Span>());
-        let id = UIIdentifier {
+        let id = UIIdentifier::Component(ComponentIdentifier {
             id,
             name: format!("Span"),
-        };
+        });
         let span_state = Arc::new(Mutex::new(SpanState {
             state_changed: false,
             version: 0,
@@ -90,7 +90,6 @@ impl ToUINode for Span {
             let state_changed_handler = move ||{
                 let mut span_state = span_state.lock().unwrap();
                 span_state.state_changed = true;
-                println!("Span state changed");
             };
             Some(Box::new(state_changed_handler) as Box<dyn Fn()>)
         };

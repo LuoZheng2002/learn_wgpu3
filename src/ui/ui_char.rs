@@ -1,6 +1,6 @@
 use std::any::TypeId;
 
-use crate::{cache::{get_font, CacheValue}, ui_node::{BoundedLength, BoxDimensionsRelative, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
+use crate::{cache::{get_font, CacheValue}, ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
 
 
 pub struct UIChar {
@@ -12,14 +12,10 @@ pub struct UIChar {
 
 impl UIChar {
     pub fn new(character: char, font_path: String, scale: f32) -> Self {
-        let id = UI_IDENTIFIER_MAP
-            .lock()
-            .unwrap()
-            .next_id(TypeId::of::<UIChar>());
-        let id = UIIdentifier {
-            id: id,
-            name: format!("Char({})", character),
-        };
+        let id = UIIdentifier::Component(ComponentIdentifier {
+            id: 0,
+            name: format!("UIChar%{}%{}%{:.2}", character, font_path, scale),
+        });
         Self {
             character,
             font_path,

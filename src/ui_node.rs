@@ -349,15 +349,29 @@ impl BoxDimensionsAbsolute {
 // is it possible to handle events in the UINode level?
 // events: cursor inside element -> change color, cursor click: call callback, cursor drag: (cursor click + move)
 // element resize: has to go to the UI level, takes effect at the next frame, because it may affect siblings
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ComponentIdentifier{
+    pub id: u64,
+    pub name: String,
+}
+
+impl ComponentIdentifier{
+    pub fn to_string(&self) -> String {
+        format!("Component: {}%{}", self.name, self.id)
+    }
+}
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct UIIdentifier {
-    pub name: String,
-    pub id: u64,
+pub enum UIIdentifier {
+    Component(ComponentIdentifier),
+    Cell{parent: ComponentIdentifier, index: u64},
 }
 impl UIIdentifier {
     pub fn to_string(&self) -> String {
-        format!("{}%{}", self.name, self.id)
+        match self {
+            UIIdentifier::Component(id) => format!("Component: {}", id.to_string()),
+            UIIdentifier::Cell{parent, index} => format!("Cell: {}[{}]", parent.to_string(), index),
+        }
     }
 }
 
@@ -578,6 +592,9 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
         parent_global_y: u32,
         h_alignment: HorizontalAlignment,
         v_alignment: VerticalAlignment,
+        parent_id: ComponentIdentifier,
+        cell_index: u64,
+        parent_version: u64,
     ) -> UINode<BoxDimensionsWithGlobal, ChildIsContent> {
         let cell_global_pos_x = parent_global_x + cell_rel_pos_x;
         let cell_global_pos_y = parent_global_y + cell_rel_pos_y;
@@ -611,15 +628,9 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             box_dimensions: cell_dimensions,
             children: cell_children,
             meta: cell_meta,
-            // every cell is different
-            identifier: UIIdentifier {
-                name: "Cell".into(),
-                id: UI_IDENTIFIER_MAP
-                    .lock()
-                    .unwrap()
-                    .next_id(TypeId::of::<UICell>()),
-            },
-            version: 0,
+            // every cell is the same
+            identifier: UIIdentifier::Cell { parent: parent_id, index: cell_index },
+            version: parent_version,
             event_handler: None,
             state_changed_handler: None,
         }
@@ -709,6 +720,10 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             event_handler,
             state_changed_handler
         } = self;
+        let parent_id = match &identifier {
+            UIIdentifier::Component(id) => id,
+            _ => unreachable!(),
+        };
         let width_difference = parent_width as i32 - box_dimensions.width_with_margin() as i32;
         let width_difference = i32::max(width_difference, 0) as u32;
         let height_difference = parent_height as i32 - box_dimensions.height_with_margin() as i32;
@@ -754,6 +769,9 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                     self_global_y,
                     h_alignment.clone(),
                     v_alignment.clone(),
+                    parent_id.clone(),
+                    0, // index is not used for one child
+                    version,
                 );
                 ChildrenAreCells {
                     cells: vec![cell],
@@ -806,8 +824,9 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                     let cells = children
                         .into_iter()
                         .zip(cell_widths_and_heights_and_positions)
+                        .enumerate()
                         .map(
-                            |(child, ((cell_width, cell_pos_x), (cell_height, cell_pos_y)))| {
+                            |(i,(child, ((cell_width, cell_pos_x), (cell_height, cell_pos_y))))| {
                                 Self::wrap_node_with_cell(
                                     child,
                                     cell_width,
@@ -818,6 +837,9 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                                     self_global_y,
                                     h_alignment.clone(),
                                     v_alignment.clone(),
+                                    parent_id.clone(),
+                                    i as u64, // index is used for horizontal layout
+                                    version,
                                 )
                             },
                         )
@@ -873,8 +895,9 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                     let cells = children
                         .into_iter()
                         .zip(cell_widths_and_heights_and_positions)
+                        .enumerate()
                         .map(
-                            |(child, ((cell_width, cell_pos_x), (cell_height, cell_pos_y)))| {
+                            |(i, (child, ((cell_width, cell_pos_x), (cell_height, cell_pos_y))))| {
                                 Self::wrap_node_with_cell(
                                     child,
                                     cell_width,
@@ -885,6 +908,9 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                                     self_global_y,
                                     h_alignment.clone(),
                                     v_alignment.clone(),
+                                    parent_id.clone(),
+                                    i as u64, // index is used for vertical layout
+                                    version,
                                 )
                             },
                         )

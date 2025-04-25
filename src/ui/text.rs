@@ -2,7 +2,7 @@ use std::{any::TypeId, sync::{Arc, Mutex}};
 
 use either::Either;
 
-use crate::{ui_node::{BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UINodeEventProcessed, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
+use crate::{ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UINodeEventProcessed, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
 
 use super::ui_char::UIChar;
 
@@ -65,10 +65,10 @@ impl Text {
             .lock()
             .unwrap()
             .next_id(TypeId::of::<Text>());
-        let id = UIIdentifier {
+        let id = UIIdentifier::Component(ComponentIdentifier {
             id,
             name: format!("Text"),
-        };
+        });
         let text_state = Arc::new(Mutex::new(TextState {
             state_changed: false,
             change_parent_state: false,
@@ -122,7 +122,6 @@ impl ToUINode for Text {
             let state_changed_handler = move ||{
                 let mut text_state = text_state.lock().unwrap();
                 text_state.state_changed = true;
-                println!("Text state changed");
             };
             Some(Box::new(state_changed_handler) as Box<dyn Fn()>)
         };

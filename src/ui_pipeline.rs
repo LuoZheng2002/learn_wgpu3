@@ -274,7 +274,7 @@ impl UIPipeline {
             }
         };
         let child_texture = match child_texture.as_ref() {
-            CacheValue::Texture(texture) => texture,
+            CacheValue::UITexture{texture, version} => texture,
             _ => unreachable!(),
         };
         let normalized_location_left = render_instruction.location_left * 2.0 - 1.0;

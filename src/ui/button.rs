@@ -2,7 +2,7 @@ use std::{any::TypeId, sync::{Arc, Mutex}};
 
 use either::Either;
 
-use crate::{ui_node::{BoundedLength, BoxDimensionsRelative, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UINodeEventProcessed, UINodeEventRaw, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
+use crate::{ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UINodeEventProcessed, UINodeEventRaw, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
 
 
 pub struct Button {
@@ -48,10 +48,10 @@ impl Button {
             .lock()
             .unwrap()
             .next_id(TypeId::of::<Button>());
-        let id = UIIdentifier {
+        let id = UIIdentifier::Component(ComponentIdentifier {
             id,
             name: format!("Button"),
-        };
+        });
         let button_state = Arc::new(Mutex::new(ButtonState {
             hovered: false,
             clicked: false,
@@ -121,7 +121,6 @@ impl ToUINode for Button {
             let state_changed_handler = move ||{
                 let mut button_state = button_state.lock().unwrap();
                 button_state.state_changed = true;
-                println!("Button state changed");
             };
             Some(Box::new(state_changed_handler) as Box<dyn Fn()>)
         };

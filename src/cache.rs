@@ -39,6 +39,11 @@ lazy_static! {
         Cache::builder()
             .max_capacity(100) // Maximum number of items in the cache
             // .time_to_live(std::time::Duration::from_secs(60)) // Time to live for each item in the cache
+            .eviction_listener(|key, _value, cause| {
+                // This function is called when an item is evicted from the cache.
+                // You can use it to log or perform any cleanup if necessary.
+                println!("Evicted key {key:?}. Cause: {cause:?}");
+            })
             .build()
     };
 }
