@@ -65,7 +65,7 @@ impl Text {
             .lock()
             .unwrap()
             .next_id(TypeId::of::<Text>());
-        let id = UIIdentifier::Component(ComponentIdentifier {
+        let id = UIIdentifier::Component(ComponentIdentifier::Default{
             id,
             name: format!("Text"),
         });

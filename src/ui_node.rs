@@ -210,7 +210,8 @@ pub enum RelativeLength {
     Pixels(u32),
     RelativeScreenWidth(f32),
     RelativeScreenHeight(f32),
-    RelativeParent(f32),
+    RelativeParentWidth(f32),
+    RelativeParentHeight(f32),
 }
 impl RelativeLength {
     pub fn zero() -> Self {
@@ -349,15 +350,27 @@ impl BoxDimensionsAbsolute {
 // is it possible to handle events in the UINode level?
 // events: cursor inside element -> change color, cursor click: call callback, cursor drag: (cursor click + move)
 // element resize: has to go to the UI level, takes effect at the next frame, because it may affect siblings
+
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ComponentIdentifier{
-    pub id: u64,
-    pub name: String,
+pub enum ComponentIdentifier{
+    Default{
+        id: u64,
+        name: String,
+    },
+    Char{
+        character: char,
+        font_path: String,
+        show_cursor: bool,
+    }
 }
 
 impl ComponentIdentifier{
     pub fn to_string(&self) -> String {
-        format!("Component: {}%{}", self.name, self.id)
+        match self {
+            ComponentIdentifier::Default{id, name} => format!("Component: {}: {}", id, name),
+            ComponentIdentifier::Char{character, font_path, show_cursor} => format!("Char: {}: {}, show_cursor: {}", character, font_path, show_cursor),
+        }
     }
 }
 
@@ -420,7 +433,8 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
         let dimensions = &self.box_dimensions;
         fn convert_dependent_length_to_u32(
             length_unit: &RelativeLength,
-            parent_length: u32,
+            parent_width: u32,
+            parent_height: u32,
             screen_width: u32,
             screen_height: u32,
         ) -> u32 {
@@ -432,14 +446,18 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
                 RelativeLength::RelativeScreenHeight(relative) => {
                     (screen_height as f32 * relative) as u32
                 }
-                RelativeLength::RelativeParent(relative) => {
-                    (parent_length as f32 * relative) as u32
+                RelativeLength::RelativeParentWidth(relative) => {
+                    (parent_width as f32 * relative) as u32
+                }
+                RelativeLength::RelativeParentHeight(relative) => {
+                    (parent_height as f32 * relative) as u32
                 }
             }
         }
         fn convert_bounded_length_to_u32(
             length: &BoundedLength,
-            parent_length: u32,
+            parent_width: u32,
+            parent_height: u32,
             screen_width: u32,
             screen_height: u32,
         ) -> u32 {
@@ -450,14 +468,16 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
             } = length;
             let preferred_length = convert_dependent_length_to_u32(
                 preferred_length,
-                parent_length,
+                parent_width,
+                parent_height,
                 screen_width,
                 screen_height,
             );
             let min_length = match min_length {
                 Some(length) => convert_dependent_length_to_u32(
                     length,
-                    parent_length,
+                    parent_width,
+                    parent_height,
                     screen_width,
                     screen_height,
                 ),
@@ -466,7 +486,8 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
             let max_length = match max_length {
                 Some(length) => convert_dependent_length_to_u32(
                     length,
-                    parent_length,
+                    parent_width,
+                    parent_height,
                     screen_width,
                     screen_height,
                 ),
@@ -483,11 +504,13 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
         let width = convert_bounded_length_to_u32(
             &dimensions.width,
             parent_width,
+            parent_height,
             screen_width,
             screen_height,
         );
         let height = convert_bounded_length_to_u32(
             &dimensions.height,
+            parent_width,
             parent_height,
             screen_width,
             screen_height,
@@ -500,6 +523,7 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
         let margin = [
             convert_dependent_length_to_u32(
                 &dimensions.margin[0],
+                parent_width,
                 parent_height,
                 screen_width,
                 screen_height,
@@ -507,11 +531,13 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
             convert_dependent_length_to_u32(
                 &dimensions.margin[1],
                 parent_width,
+                parent_height,
                 screen_width,
                 screen_height,
             ),
             convert_dependent_length_to_u32(
                 &dimensions.margin[2],
+                parent_width,
                 parent_height,
                 screen_width,
                 screen_height,
@@ -519,6 +545,7 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
             convert_dependent_length_to_u32(
                 &dimensions.margin[3],
                 parent_width,
+                parent_height,
                 screen_width,
                 screen_height,
             ),
@@ -526,6 +553,7 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
         let padding = [
             convert_dependent_length_to_u32(
                 &dimensions.padding[0],
+                parent_width,
                 parent_height,
                 screen_width,
                 screen_height,
@@ -533,11 +561,13 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
             convert_dependent_length_to_u32(
                 &dimensions.padding[1],
                 parent_width,
+                parent_height,
                 screen_width,
                 screen_height,
             ),
             convert_dependent_length_to_u32(
                 &dimensions.padding[2],
+                parent_width,
                 parent_height,
                 screen_width,
                 screen_height,
@@ -545,6 +575,7 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
             convert_dependent_length_to_u32(
                 &dimensions.padding[3],
                 parent_width,
+                parent_height,
                 screen_width,
                 screen_height,
             ),
@@ -612,7 +643,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             ),
         };
         let cell_meta = TextureMeta::Texture {
-            path: "assets/kiminonawa.jpg".into(),
+            path: "assets/transparent_frame.png".into(),
         };
         let cell_dimensions = BoxDimensionsWithGlobal {
             width: cell_width,
@@ -1094,6 +1125,7 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
             mouse_hover: false,
             lose_focus: false,
             key_down: event.key_down,
+            cursor_blink: event.cursor_blink,
         };
         let box_dimensions = &self.box_dimensions;
         if event.mouse_x >= box_dimensions.global_pos_x
@@ -1127,13 +1159,14 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
     }
     /// the return value specifies whether the current UI element and its parent have a state change
     pub fn handle_event(&self, event: &UINodeEventRaw)->bool{
+        
         let event_processed = self.process_event(event);
         let mut state_changed = false;
         if let Some(event_handler) = &self.event_handler {
-            state_changed  = state_changed || event_handler(&event_processed);
+            state_changed  = event_handler(&event_processed) || state_changed;
         }        
         for child in self.children.children.iter() {
-            state_changed = state_changed || child.handle_event(&event);
+            state_changed = child.handle_event(event) || state_changed;
         }
         if state_changed{
             if let Some(state_changed_handler) = &self.state_changed_handler {
@@ -1155,6 +1188,7 @@ pub struct UINodeEventRaw{
     pub mouse_left_up: bool, // the frame that the button changes from down to up
     pub mouse_right_up: bool,
     pub key_down: Option<KeyCode>, // the frame that the key changes from up to down
+    pub cursor_blink: bool, // the frame that the cursor blinks
 }
 
 pub struct UINodeEventProcessed{
@@ -1165,4 +1199,5 @@ pub struct UINodeEventProcessed{
     pub mouse_hover: bool, // whether the mouse is inside the element
     pub lose_focus: bool, // whether the mouse is left clicked / right clicked outside the element
     pub key_down: Option<KeyCode>, // the key that is pressed down
+    pub cursor_blink: bool, // the frame that the cursor blinks
 }

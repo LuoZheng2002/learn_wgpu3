@@ -51,7 +51,7 @@ impl Span {
             .lock()
             .unwrap()
             .next_id(TypeId::of::<Span>());
-        let id = UIIdentifier::Component(ComponentIdentifier {
+        let id = UIIdentifier::Component(ComponentIdentifier::Default {
             id,
             name: format!("Span"),
         });

@@ -1,27 +1,42 @@
-use std::any::TypeId;
+use std::{any::TypeId, sync::{Arc, Mutex}};
 
-use crate::{cache::{get_font, CacheValue}, ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
+use crate::{cache::{get_font, CacheValue}, ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
 
-
+/// a blinking character has a different id than a non-blinking character
 pub struct UIChar {
     pub character: char,
     pub font_path: String,
     pub scale: f32,
-    pub id: UIIdentifier,
+    pub char_state: Arc<Mutex<UICharState>>,
+}
+
+pub struct UICharState{
+    pub blinking: bool,
+    pub showing_cursor: bool,
 }
 
 impl UIChar {
     pub fn new(character: char, font_path: String, scale: f32) -> Self {
-        let id = UIIdentifier::Component(ComponentIdentifier {
-            id: 0,
-            name: format!("UIChar%{}%{}%{:.2}", character, font_path, scale),
-        });
+        let char_state = UICharState {
+            blinking: true,
+            showing_cursor: false,
+        };
+        let char_state = Arc::new(Mutex::new(char_state));
         Self {
             character,
             font_path,
             scale,
-            id,
+            char_state,
         }
+    }
+    pub fn get_id(&self) -> UIIdentifier {
+        let char_state = self.char_state.lock().unwrap();
+        let show_cursor = char_state.blinking && char_state.showing_cursor;
+        UIIdentifier::Component(ComponentIdentifier::Char { 
+            character: self.character, 
+            font_path: self.font_path.clone(), 
+            show_cursor
+        })
     }
 }
 
@@ -64,14 +79,91 @@ impl ToUINode for UIChar {
                 RelativeLength::Pixels(0),
             ],
         };
+        let id = self.get_id();
+        let show_cursor = match id{
+            UIIdentifier::Component(ComponentIdentifier::Char { show_cursor, .. }) => show_cursor,
+            _ => unreachable!(),
+        };
+        
+        
+        let children: StructuredChildren<BoxDimensionsRelative> = match show_cursor {
+            true => {
+                let child = CharCursor{};
+                let child_ui_node = child.to_ui_node();
+                StructuredChildren::OneChild { 
+                h_alignment: HorizontalAlignment::Left, 
+                v_alignment: VerticalAlignment::Top, 
+                child: Box::new(child_ui_node),
+            }
+            },
+            false => StructuredChildren::NoChildren,
+        };
+        let event_handler = {
+            let char_state = self.char_state.clone();
+            let character = self.character;
+            let event_handler = move |event: &crate::ui_node::UINodeEventProcessed|->bool {
+                let mut change_parent_state = false;
+                if event.cursor_blink{                    
+                    let mut char_state = char_state.lock().unwrap();
+                    if char_state.blinking{
+                        char_state.showing_cursor = !char_state.showing_cursor;
+                        change_parent_state = true;
+                    }
+                }
+                change_parent_state
+            };
+            Some(Box::new(event_handler) as Box<dyn Fn(&crate::ui_node::UINodeEventProcessed)->bool>)
+        };
         UINode {
             box_dimensions,
-            children: crate::ui_node::StructuredChildren::NoChildren,
+            children,
             meta: TextureMeta::Font {
                 character: self.character,
                 font_path: self.font_path.clone(),
             },
-            identifier: self.id.clone(),
+            identifier: id,
+            version: 0,
+            event_handler,
+            state_changed_handler: None,
+        }
+    }
+}
+
+pub struct CharCursor{
+
+}
+
+impl ToUINode for CharCursor {
+    fn to_ui_node(
+        &self,
+    ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
+        let box_dimensions = BoxDimensionsRelative {
+            width: BoundedLength::fixed_dependent(RelativeLength::RelativeParentHeight(0.05)),
+            height: BoundedLength::fixed_dependent(RelativeLength::RelativeParentHeight(1.0)),
+            margin: [
+                RelativeLength::Pixels(0),
+                RelativeLength::Pixels(0),
+                RelativeLength::Pixels(0),
+                RelativeLength::Pixels(0),
+            ],
+            padding: [
+                RelativeLength::Pixels(0),
+                RelativeLength::Pixels(0),
+                RelativeLength::Pixels(0),
+                RelativeLength::Pixels(0),
+            ],
+        };
+        let id = UIIdentifier::Component(ComponentIdentifier::Default {
+            id: 0,
+            name: format!("CharCursor"),
+        });
+        UINode {
+            box_dimensions,
+            children: StructuredChildren::NoChildren,
+            meta: TextureMeta::Texture {
+                path: "assets/text_cursor.png".into(),
+            },
+            identifier: id,
             version: 0,
             event_handler: None,
             state_changed_handler: None,

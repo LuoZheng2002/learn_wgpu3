@@ -48,7 +48,7 @@ impl Button {
             .lock()
             .unwrap()
             .next_id(TypeId::of::<Button>());
-        let id = UIIdentifier::Component(ComponentIdentifier {
+        let id = UIIdentifier::Component(ComponentIdentifier::Default {
             id,
             name: format!("Button"),
         });

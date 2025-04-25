@@ -18,6 +18,7 @@ pub struct State {
     pub timer: Option<Instant>,
     pub prev_time: Option<f32>,
     pub fps_timer: Option<Instant>,
+    pub cursor_timer: Option<Instant>,
     pub accumulated_frame_num: u32,
     pub model_render_submissions: HashMap<ModelMeta, Vec<ModelInstance>>,
     // use Arc here because we need to map the container to another container
@@ -141,8 +142,9 @@ impl State {
     pub fn update(&mut self, input_context: &mut InputContext, window_size: &winit::dpi::PhysicalSize<u32>) {
         // calculate fps every 1 second
         let fps_timer = self.fps_timer.get_or_insert_with(|| Instant::now());
-        let current_time = fps_timer.elapsed().as_secs_f32();
-        if current_time >= 1.0 {
+        let cursor_timer = self.cursor_timer.get_or_insert_with(|| Instant::now());
+        let current_fps_time = fps_timer.elapsed().as_secs_f32();
+        if current_fps_time >= 1.0 {
             println!("FPS: {}", self.accumulated_frame_num);
             self.fps = self.accumulated_frame_num;
             self.accumulated_frame_num = 0;
@@ -150,6 +152,13 @@ impl State {
             self.text_state.as_ref().unwrap().lock().unwrap().set_text(format!("FPS: {}", self.fps).to_string(), "assets/consolas.ttf".to_string(), 50.0 );
         } else {
             self.accumulated_frame_num += 1;
+        }
+        let current_cursor_time = cursor_timer.elapsed().as_secs_f32();
+        let mut cursor_blink = false;
+        if current_cursor_time >= 0.5 {
+            // println!("cursor: {:?}", input_context.mouse_position());
+            *cursor_timer = Instant::now();
+            cursor_blink = true;
         }
         let timer = self.timer.get_or_insert_with(|| Instant::now());
         let current_time = timer.elapsed().as_secs_f32();
@@ -217,11 +226,13 @@ impl State {
             mouse_right: input_context.mouse_right(),
             mouse_right_down: input_context.mouse_right_down(),
             mouse_right_up: input_context.mouse_right_up(),
-            key_down: input_context.get_current_key_down()
+            key_down: input_context.get_current_key_down(),
+            cursor_blink,
         };
         let render_instruction = canvas.update_and_to_instruction(screen_width, screen_height, &ui_node_event);
         self.submit_ui_render_instruction(render_instruction);
         // panic!()
+
     }
 }
 
@@ -232,6 +243,7 @@ impl Default for State {
             timer: None,
             prev_time: None,
             fps_timer: None,
+            cursor_timer: None,
             accumulated_frame_num: 0,
             model_render_submissions: HashMap::new(),
             // ui_render_submissions: HashMap::new(),
