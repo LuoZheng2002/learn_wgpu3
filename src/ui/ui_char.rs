@@ -1,25 +1,36 @@
-use std::{any::TypeId, sync::{Arc, Mutex}};
+use std::{any::TypeId, sync::{Arc, Mutex, Weak}};
 
 use crate::{cache::{get_font, CacheValue}, ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
+
+use super::text::CharEvent;
 
 /// a blinking character has a different id than a non-blinking character
 pub struct UIChar {
     pub character: char,
     pub font_path: String,
     pub scale: f32,
-    pub char_state: Arc<Mutex<UICharState>>,
+    pub char_state: Arc<Mutex<UICharState>>,    
 }
 
 pub struct UICharState{
     pub blinking: bool,
     pub showing_cursor: bool,
+    pub char_event_callback: Weak<dyn Fn(u64, CharEvent)>,
+    pub index: u64,
 }
 
 impl UIChar {
-    pub fn new(character: char, font_path: String, scale: f32) -> Self {
+    pub fn new(character: char, 
+        font_path: String, 
+        scale: f32, 
+        char_event_callback: Weak<dyn Fn(u64, CharEvent)>,
+        index: u64,
+    ) -> Self {
         let char_state = UICharState {
             blinking: true,
             showing_cursor: false,
+            char_event_callback,
+            index,
         };
         let char_state = Arc::new(Mutex::new(char_state));
         Self {
@@ -99,12 +110,23 @@ impl ToUINode for UIChar {
             false => StructuredChildren::NoChildren,
         };
         let event_handler = {
-            let char_state = self.char_state.clone();
-            let character = self.character;
+            let char_state = Arc::downgrade(&self.char_state);
+            // let character = self.character;
             let event_handler = move |event: &crate::ui_node::UINodeEventProcessed|->bool {
+                let char_state = char_state.upgrade().unwrap();
+                let mut char_state = char_state.lock().unwrap();
                 let mut change_parent_state = false;
+                // handle mouse clicks
+                let char_event_callback = char_state.char_event_callback.upgrade().unwrap();
+                if event.left_clicked_inside{
+                    char_event_callback(char_state.index, CharEvent::LeftPartClicked);
+                    change_parent_state = true;
+                }else if event.right_clicked_inside{
+                    char_event_callback(char_state.index, CharEvent::RightPartClicked);
+                    change_parent_state = true;
+                }
+                // handle toggling binking
                 if event.cursor_blink{                    
-                    let mut char_state = char_state.lock().unwrap();
                     if char_state.blinking{
                         char_state.showing_cursor = !char_state.showing_cursor;
                         change_parent_state = true;

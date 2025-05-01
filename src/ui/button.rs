@@ -93,9 +93,10 @@ impl ToUINode for Button {
             None => crate::ui_node::StructuredChildren::NoChildren,
         };
         let event_handler = {
-            let button_state = self.button_state.clone();
+            let button_state = Arc::downgrade(&self.button_state);
             let click_callback = self.click_callback.clone();
             let event_handler = move |event: &UINodeEventProcessed|->bool {
+                let button_state = button_state.upgrade().unwrap();
                 let mut button_state = button_state.lock().unwrap();
                 let prev_button_clicked = button_state.clicked;
                 let prev_button_hovered = button_state.hovered;

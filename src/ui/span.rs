@@ -11,7 +11,7 @@ pub enum SpanDirection {
 
 pub struct Span {
     pub direction: SpanDirection,
-    pub children: Vec<Box<dyn ToUINode>>,
+    pub children: Vec<Arc<dyn ToUINode>>,
     pub box_dimensions: BoxDimensionsRelative,
     pub h_alignment: HorizontalAlignment,
     pub v_alignment: VerticalAlignment,
@@ -71,7 +71,7 @@ impl Span {
             span_state,
         }
     }
-    pub fn push_child(&mut self, child: Box<dyn ToUINode>) {
+    pub fn push_child(&mut self, child: Arc<dyn ToUINode>) {
         self.children.push(child);
     }
 }
@@ -80,6 +80,8 @@ pub struct SpanState{
     pub state_changed: bool,
     pub version: u64,
 }
+
+// we want other contexts to access the ui and modify it
 
 impl ToUINode for Span {
     fn to_ui_node(

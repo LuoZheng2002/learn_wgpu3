@@ -362,6 +362,9 @@ pub enum ComponentIdentifier{
         character: char,
         font_path: String,
         show_cursor: bool,
+    },
+    DummyChar{
+        show_cursor: bool,
     }
 }
 
@@ -370,6 +373,7 @@ impl ComponentIdentifier{
         match self {
             ComponentIdentifier::Default{id, name} => format!("Component: {}: {}", id, name),
             ComponentIdentifier::Char{character, font_path, show_cursor} => format!("Char: {}: {}, show_cursor: {}", character, font_path, show_cursor),
+            ComponentIdentifier::DummyChar{show_cursor} => format!("DummyChar: show_cursor: {}", show_cursor),
         }
     }
 }
@@ -1117,45 +1121,37 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         result
     }
     fn process_event(&self, event: &UINodeEventRaw) -> UINodeEventProcessed {
-        let mut result = UINodeEventProcessed {
-            left_clicked_inside: false,
-            left_released: false,
-            right_clicked_inside: false,
-            right_released: false,
-            mouse_hover: false,
-            lose_focus: false,
-            key_down: event.key_down,
-            cursor_blink: event.cursor_blink,
-        };
         let box_dimensions = &self.box_dimensions;
-        if event.mouse_x >= box_dimensions.global_pos_x
-            && event.mouse_x <= box_dimensions.global_pos_x + box_dimensions.width
+        let mouse_hover_left_half = 
+            event.mouse_x >= box_dimensions.global_pos_x
+            && event.mouse_x < box_dimensions.global_pos_x + box_dimensions.width/2
             && event.mouse_y >= box_dimensions.global_pos_y
-            && event.mouse_y <= box_dimensions.global_pos_y + box_dimensions.height
-        {
-            result.mouse_hover = true;
+            && event.mouse_y < box_dimensions.global_pos_y + box_dimensions.height;
+        let mouse_hover_right_half =
+            event.mouse_x >= box_dimensions.global_pos_x + box_dimensions.width/2
+            && event.mouse_x < box_dimensions.global_pos_x + box_dimensions.width
+            && event.mouse_y >= box_dimensions.global_pos_y
+            && event.mouse_y < box_dimensions.global_pos_y + box_dimensions.height;
+        let mouse_hover = mouse_hover_left_half || mouse_hover_right_half;
+        let left_clicked_left_half = mouse_hover_left_half && event.mouse_left_down;
+        let left_clicked_right_half = mouse_hover_right_half && event.mouse_left_down;
+        let left_clicked_inside = mouse_hover && event.mouse_left_down;
+        let right_clicked_inside = mouse_hover && event.mouse_right_down;
+        let lose_focus = !mouse_hover && (event.mouse_left_down || event.mouse_right_down);
+        let left_released = event.mouse_left_up;
+        let right_released = event.mouse_right_up;
+        UINodeEventProcessed { 
+            left_clicked_inside, 
+            left_released, 
+            right_clicked_inside, 
+            right_released, 
+            mouse_hover, 
+            lose_focus, 
+            key_down: event.key_down, 
+            cursor_blink: event.cursor_blink, 
+            left_clicked_left_half, 
+            left_clicked_right_half,
         }
-        if result.mouse_hover {
-            if event.mouse_left_down {
-                result.left_clicked_inside = true;
-            }
-            
-            if event.mouse_right_down {
-                result.right_clicked_inside = true;
-            }
-        }
-        else{
-            if event.mouse_left_down || event.mouse_right_down {
-                result.lose_focus = true;
-            }
-        }
-        if event.mouse_left_up {
-            result.left_released = true;
-        }
-        if event.mouse_right_up {
-            result.right_released = true;
-        }
-        result
     }
     /// the return value specifies whether the current UI element and its parent have a state change
     pub fn handle_event(&self, event: &UINodeEventRaw)->bool{
@@ -1163,6 +1159,7 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         let event_processed = self.process_event(event);
         let mut state_changed = false;
         if let Some(event_handler) = &self.event_handler {
+            println!("handling event for {}", self.identifier.to_string());
             state_changed  = event_handler(&event_processed) || state_changed;
         }        
         for child in self.children.children.iter() {
@@ -1200,4 +1197,6 @@ pub struct UINodeEventProcessed{
     pub lose_focus: bool, // whether the mouse is left clicked / right clicked outside the element
     pub key_down: Option<KeyCode>, // the key that is pressed down
     pub cursor_blink: bool, // the frame that the cursor blinks
+    pub left_clicked_left_half: bool,
+    pub left_clicked_right_half: bool,
 }

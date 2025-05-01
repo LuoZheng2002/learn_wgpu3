@@ -4,13 +4,12 @@ use cgmath::{Euler, Quaternion};
 use either::Either;
 
 use crate::{
-    input_context::InputContext, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{button::Button, span::{Span, SpanDirection}, text::{Text, TextState}}, ui_node::{
+    input_context::InputContext, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{button::Button, span::{Span, SpanDirection}, text::{CharEvent, Text, TextState}}, ui_node::{
         BoundedLength, HorizontalAlignment, RelativeLength, ToUINode, UINodeEventRaw, UIRenderInstruction, VerticalAlignment
     }, ui_renderable::TextureMeta
 };
 
 // model path,
-
 pub struct State {
     // camera stuff
     pub camera: MyCamera,
@@ -51,6 +50,22 @@ impl State {
         let text = Text::new(
             // format!("fps: {}", self.fps).to_string(),
             "fpsmnlk: 100".into(),
+            "assets/consolas.ttf".to_string(),
+            50.0,
+            Either::Left(RelativeLength::Pixels(20)),
+            Either::Left(RelativeLength::Pixels(20)),
+            cgmath::Vector4 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+                w: 1.0,
+            },
+            BoundedLength::fixed_pixels(300),
+            BoundedLength::fixed_pixels(200),
+        );
+        let text2 = Text::new(
+            // format!("fps: {}", self.fps).to_string(),
+            "asdf/:?123".into(),
             "assets/consolas.ttf".to_string(),
             50.0,
             Either::Left(RelativeLength::Pixels(20)),
@@ -135,6 +150,7 @@ impl State {
         // span.push_child(Box::new(span3));
         span.push_child(Box::new(text));
         span.push_child(Box::new(button));
+        span.push_child(Box::new(text2));
         // span.push_child(Box::new(button));
         self.canvas = Some(span);
     }
@@ -149,7 +165,14 @@ impl State {
             self.fps = self.accumulated_frame_num;
             self.accumulated_frame_num = 0;
             *fps_timer = Instant::now();
-            self.text_state.as_ref().unwrap().lock().unwrap().set_text(format!("FPS: {}", self.fps).to_string(), "assets/consolas.ttf".to_string(), 50.0 );
+            let dummy_callback = |index: u64, event: CharEvent|{};
+            let dummy_callback = Arc::new(dummy_callback);
+            self.text_state.as_ref().unwrap().lock().unwrap().set_text(
+                format!("FPS: {}", self.fps).to_string(),
+                "assets/consolas.ttf".to_string(), 
+                50.0,
+                dummy_callback
+            );
         } else {
             self.accumulated_frame_num += 1;
         }
