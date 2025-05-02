@@ -37,7 +37,8 @@ pub struct UITextInner {
     pub char_event_callback: Arc<dyn Fn(u64, CharEvent)>, // to do
 
     pub scheduled_insert: Option<String>,
-    pub scheduled_delete: bool,
+    pub scheduled_delete_front: bool,
+    pub scheduled_delete_back: bool,
 }
 
 impl UITextInner{
@@ -89,9 +90,10 @@ impl UITextInner{
             self.start_blinking_one(new_cursor_position as u64);
         }
     }
-    pub fn delete_char(&mut self){
+    pub fn delete_char(&mut self, offset: i64){
         if let Some(index) = self.current_blinking_index {
-            if index != 0{          
+            let index = index as i64 + offset;
+            if index > 0 && index <= self.text.len() as i64 {          
                 let old_raw_text = self.text.iter().map(|(c, _)| *c).collect::<String>();
                 let mut new_text = old_raw_text.clone();
                 let new_cursor_position = index as usize - 1;
@@ -104,6 +106,15 @@ impl UITextInner{
                 self.set_text(new_text);
                 self.stop_blinking_all();
                 self.start_blinking_one(new_cursor_position as u64);
+            }
+        }
+    }
+    pub fn move_cursor(&mut self, offset: i64){
+        if let Some(index) = self.current_blinking_index {
+            let index = index as i64 + offset;
+            if index >= 0 && index <= self.text.len() as i64 {            
+                self.stop_blinking_all();
+                self.start_blinking_one(index as u64);
             }
         }
     }
@@ -178,7 +189,8 @@ impl UIText {
             char_event_callback: Arc::new(dummy_event_callback),
             current_blinking_index: None,
             scheduled_insert: None,
-            scheduled_delete: false,
+            scheduled_delete_front: false,
+            scheduled_delete_back: false,
         };     
         let inner = Arc::new(RwLock::new(inner));
         let char_event_callback = {
@@ -234,7 +246,22 @@ impl ToUINode for UIText {
                 if let Some(key) = event.key_down {
                     println!("Key pressed: {:?}", key);
                     if key == KeyCode::Backspace {
-                        inner.scheduled_delete = true;
+                        inner.scheduled_delete_front = true;
+                        inner.render_state_changed = true;
+                        inner.change_parent_render_state = true;
+                    }
+                    else if key == KeyCode::Delete {
+                        inner.scheduled_delete_back = true;
+                        inner.render_state_changed = true;
+                        inner.change_parent_render_state = true;
+                    }
+                    if key == KeyCode::ArrowLeft {
+                        inner.move_cursor(-1);
+                        inner.render_state_changed = true;
+                        inner.change_parent_render_state = true;
+                    }
+                    else if key == KeyCode::ArrowRight {
+                        inner.move_cursor(1);
                         inner.render_state_changed = true;
                         inner.change_parent_render_state = true;
                     }
@@ -261,9 +288,13 @@ impl ToUINode for UIText {
             inner.insert_string(&pressed_str);
             inner.scheduled_insert = None;
         }
-        if inner.scheduled_delete {
-            inner.delete_char();
-            inner.scheduled_delete = false;
+        if inner.scheduled_delete_front {
+            inner.delete_char(0);
+            inner.scheduled_delete_front = false;
+        }
+        if inner.scheduled_delete_back {
+            inner.delete_char(1);
+            inner.scheduled_delete_back = false;
         }
         if let Some((index, event)) = &inner.pending_char_event {
             let pos = match event {
