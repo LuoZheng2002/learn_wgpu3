@@ -1,4 +1,4 @@
-use std::{any::TypeId, sync::{Arc, Mutex}};
+use std::{any::TypeId, sync::{Arc, Mutex, RwLock}};
 
 use either::Either;
 
@@ -9,19 +9,25 @@ pub enum SpanDirection {
     Vertical,
 }
 
-pub struct Span {
+struct UISpanInner{
+    pub render_state_changed: bool,
+    pub render_version: u64,
     pub direction: SpanDirection,
-    pub children: Vec<Arc<dyn ToUINode>>,
+    pub children: Vec<Box<dyn ToUINode>>,
     pub box_dimensions: BoxDimensionsRelative,
     pub h_alignment: HorizontalAlignment,
     pub v_alignment: VerticalAlignment,
     pub uniform_division: bool,
-    pub texture: TextureMeta,
+    pub texture_meta: TextureMeta,
     pub id: UIIdentifier,
-    pub span_state: Arc<Mutex<SpanState>>,
 }
 
-impl Span {
+#[derive(Clone)]
+pub struct UISpan {
+    inner: Arc<RwLock<UISpanInner>>,
+}
+
+impl UISpan {
     pub fn new(
         direction: SpanDirection,
         width: BoundedLength,
@@ -34,11 +40,11 @@ impl Span {
         texture: TextureMeta,
     ) -> Self {
         let margin = match margin {
-            Either::Left(m) => [m.clone(), m.clone(), m.clone(), m.clone()],
+            Either::Left(m) => [m, m, m, m],
             Either::Right(m) => m,
         };
         let padding = match padding {
-            Either::Left(p) => [p.clone(), p.clone(), p.clone(), p.clone()],
+            Either::Left(p) => [p, p, p, p],
             Either::Right(p) => p,
         };
         let box_dimensions: BoxDimensionsRelative = BoxDimensionsRelative {
@@ -50,83 +56,82 @@ impl Span {
         let id = UI_IDENTIFIER_MAP
             .lock()
             .unwrap()
-            .next_id(TypeId::of::<Span>());
+            .next_id(TypeId::of::<UISpan>());
         let id = UIIdentifier::Component(ComponentIdentifier::Default {
             id,
             name: format!("Span"),
         });
-        let span_state = Arc::new(Mutex::new(SpanState {
-            state_changed: false,
-            version: 0,
-        }));
-        Self {
+        let inner = UISpanInner {
+            render_state_changed: false,
+            render_version: 0,
             direction,
             children: Vec::new(),
             box_dimensions,
             h_alignment,
             v_alignment,
             uniform_division,
-            texture,
+            texture_meta: texture,
             id,
-            span_state,
+        };
+        Self {
+            inner: Arc::new(RwLock::new(inner)),
         }
     }
-    pub fn push_child(&mut self, child: Arc<dyn ToUINode>) {
-        self.children.push(child);
+    pub fn push_child(&self, child: Box<dyn ToUINode>) {
+        let mut inner = self.inner.write().unwrap();
+        inner.children.push(child);
     }
 }
 
-pub struct SpanState{
-    pub state_changed: bool,
-    pub version: u64,
-}
 
 // we want other contexts to access the ui and modify it
 
-impl ToUINode for Span {
+impl ToUINode for UISpan {
     fn to_ui_node(
         &self,
     ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
-        let state_changed_handler = {
-            let span_state = self.span_state.clone();
-            let state_changed_handler = move ||{
-                let mut span_state = span_state.lock().unwrap();
-                span_state.state_changed = true;
+        
+        let render_state_changed_handler = {
+            let inner = Arc::downgrade(&self.inner);
+            let render_state_changed_handler = move ||{
+                let inner = inner.upgrade().unwrap();
+                let mut inner = inner.write().unwrap();
+                inner.render_state_changed = true;
             };
-            Some(Box::new(state_changed_handler) as Box<dyn Fn()>)
+            Some(Box::new(render_state_changed_handler) as Box<dyn Fn()>)
         };
-        let mut span_state = self.span_state.lock().unwrap();
-        if span_state.state_changed {
-            span_state.state_changed = false;
-            span_state.version += 1;
+        let mut inner = self.inner.write().unwrap();
+        // respond to pending changes
+        if inner.render_state_changed {
+            inner.render_state_changed = false;
+            inner.render_version += 1;
         }
-
-        let children_ui_nodes = self
+        let children_ui_nodes = inner
             .children
             .iter()
             .map(|c| c.to_ui_node())
             .collect::<Vec<_>>();
         UINode {
-            box_dimensions: self.box_dimensions.clone(),
-            children: match &self.direction {
+            box_dimensions: inner.box_dimensions.clone(),
+            children: match &inner.direction {
                 SpanDirection::Horizontal => StructuredChildren::HorizontalLayout {
-                    h_alignment: self.h_alignment.clone(),
-                    v_alignment: self.v_alignment.clone(),
-                    uniform_division: self.uniform_division,
+                    h_alignment: inner.h_alignment,
+                    v_alignment: inner.v_alignment,
+                    uniform_division: inner.uniform_division,
                     children: children_ui_nodes,
                 },
                 SpanDirection::Vertical => StructuredChildren::VerticalLayout {
-                    h_alignment: self.h_alignment.clone(),
-                    v_alignment: self.v_alignment.clone(),
-                    uniform_division: self.uniform_division,
+                    h_alignment: inner.h_alignment,
+                    v_alignment: inner.v_alignment,
+                    uniform_division: inner.uniform_division,
                     children: children_ui_nodes,
                 },
             },
-            meta: self.texture.clone(),
-            identifier: self.id.clone(),
-            version: span_state.version,
+            texture_meta: inner.texture_meta.clone(),
+            identifier: inner.id.clone(),
+            render_version: inner.render_version,
             event_handler: None,
-            state_changed_handler,
+            render_state_changed_handler,
         }
     }
 }

@@ -51,18 +51,19 @@ pub trait ToUINode {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum HorizontalAlignment {
     Left,
     Center,
     Right,
 }
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum VerticalAlignment {
     Top,
     Center,
     Bottom,
 }
+
 pub enum StructuredChildren<B: BoxDimensions> {
     NoChildren,
     OneChild {
@@ -82,13 +83,7 @@ pub enum StructuredChildren<B: BoxDimensions> {
         v_alignment: VerticalAlignment,
         uniform_division: bool,
         children: Vec<UINode<B, StructuredChildren<B>>>,
-    },
-    GridLayout {
-        h_alignment: HorizontalAlignment,
-        v_alignment: VerticalAlignment,
-        uniform_division: bool,
-        children: Vec<UINode<B, StructuredChildren<B>>>,
-    },
+    }
 }
 
 // todo: not sure if putting alignment here is a good idea
@@ -193,19 +188,11 @@ impl StructuredChildren<BoxDimensionsRelative> {
                     children: new_children,
                 }
             }
-            StructuredChildren::GridLayout {
-                h_alignment,
-                v_alignment,
-                uniform_division,
-                children,
-            } => {
-                todo!()
-            }
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum RelativeLength {
     Pixels(u32),
     RelativeScreenWidth(f32),
@@ -419,11 +406,11 @@ lazy_static! {
 pub struct UINode<B: BoxDimensions, C: UIChildren<B>> {
     pub box_dimensions: B,
     pub children: C,       // assuming horizontal layout
-    pub meta: TextureMeta, // contains optional texture information
+    pub texture_meta: TextureMeta, // contains optional texture information
     pub identifier: UIIdentifier,
-    pub version: u64,
+    pub render_version: u64,
     pub event_handler: Option<Box<dyn Fn(&UINodeEventProcessed)->bool>>,
-    pub state_changed_handler: Option<Box<dyn Fn()>>,
+    pub render_state_changed_handler: Option<Box<dyn Fn()>>,
 }
 
 impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
@@ -593,11 +580,11 @@ impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
         UINode {
             box_dimensions,
             children,
-            meta: self.meta,
+            texture_meta: self.texture_meta,
             identifier: self.identifier,
-            version: self.version,
+            render_version: self.render_version,
             event_handler: self.event_handler,
-            state_changed_handler: self.state_changed_handler,
+            render_state_changed_handler: self.render_state_changed_handler,
         }
     }
 }
@@ -662,12 +649,12 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
         UINode {
             box_dimensions: cell_dimensions,
             children: cell_children,
-            meta: cell_meta,
+            texture_meta: cell_meta,
             // every cell is the same
             identifier: UIIdentifier::Cell { parent: parent_id, index: cell_index },
-            version: parent_version,
+            render_version: parent_version,
             event_handler: None,
-            state_changed_handler: None,
+            render_state_changed_handler: None,
         }
     }
     fn get_cell_lengths_and_positions_tangent_dir(
@@ -749,11 +736,11 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
         let UINode {
             box_dimensions,
             children,
-            meta,
+            texture_meta: meta,
             identifier,
-            version,
+            render_version: version,
             event_handler,
-            state_changed_handler
+            render_state_changed_handler: state_changed_handler
         } = self;
         let parent_id = match &identifier {
             UIIdentifier::Component(id) => id,
@@ -957,14 +944,6 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                     }
                 }
             }
-            StructuredChildren::GridLayout {
-                h_alignment,
-                v_alignment,
-                uniform_division,
-                children,
-            } => {
-                todo!()
-            }
         };
         let box_dimensions = BoxDimensionsWithGlobal {
             width: box_dimensions.width,
@@ -979,11 +958,11 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
         UINode {
             box_dimensions,
             children,
-            meta,
+            texture_meta: meta,
             identifier,
-            version,
+            render_version: version,
             event_handler,
-            state_changed_handler,
+            render_state_changed_handler: state_changed_handler,
         }
     }
 }
@@ -993,11 +972,11 @@ impl UINode<BoxDimensionsWithGlobal, ChildrenAreCells> {
         let UINode {
             box_dimensions,
             children,
-            meta,
+            texture_meta: meta,
             identifier,
-            version,
+            render_version: version,
             event_handler,
-            state_changed_handler,
+            render_state_changed_handler: state_changed_handler,
         } = self;
         let children = children
             .cells
@@ -1008,11 +987,11 @@ impl UINode<BoxDimensionsWithGlobal, ChildrenAreCells> {
         UINode {
             box_dimensions,
             children,
-            meta,
+            texture_meta: meta,
             identifier,
-            version,
+            render_version: version,
             event_handler,
-            state_changed_handler,
+            render_state_changed_handler: state_changed_handler,
         }
     }
 }
@@ -1021,22 +1000,22 @@ impl UINode<BoxDimensionsWithGlobal, ChildIsContent> {
         let UINode {
             box_dimensions,
             children,
-            meta,
+            texture_meta: meta,
             identifier,
-            version,
+            render_version: version,
             event_handler,
-            state_changed_handler,
+            render_state_changed_handler: state_changed_handler,
         } = self;
         let children = vec![children.content.to_unified()];
         let children = UnifiedChildren { children };
         UINode {
             box_dimensions,
             children,
-            meta,
+            texture_meta: meta,
             identifier,
-            version,
+            render_version: version,
             event_handler,
-            state_changed_handler,
+            render_state_changed_handler: state_changed_handler,
         }
     }
 }
@@ -1050,11 +1029,11 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         let UINode {
             box_dimensions,
             children,
-            meta,
+            texture_meta: meta,
             identifier,
-            version,
+            render_version: version,
             event_handler: _,
-            state_changed_handler: _,
+            render_state_changed_handler: _,
         } = self;
         let texture_width = box_dimensions.width;
         let texture_height = box_dimensions.height;
@@ -1092,11 +1071,11 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         let UINode {
             box_dimensions,
             children,
-            meta,
+            texture_meta: meta,
             identifier,
-            version,
+            render_version: version,
             event_handler: _,
-            state_changed_handler: _,
+            render_state_changed_handler: _,
         } = self;
         let pad = " ".repeat((indent * 4) as usize);
         let mut result = format!(
@@ -1140,6 +1119,10 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         let lose_focus = !mouse_hover && (event.mouse_left_down || event.mouse_right_down);
         let left_released = event.mouse_left_up;
         let right_released = event.mouse_right_up;
+        let pressed_str = event.pressed_str.clone();
+        if let Some(keycode) = event.key_down {
+            println!("key in processed pressed: {:?}", keycode);
+        }
         UINodeEventProcessed { 
             left_clicked_inside, 
             left_released, 
@@ -1151,6 +1134,7 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
             cursor_blink: event.cursor_blink, 
             left_clicked_left_half, 
             left_clicked_right_half,
+            pressed_str,
         }
     }
     /// the return value specifies whether the current UI element and its parent have a state change
@@ -1159,14 +1143,13 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         let event_processed = self.process_event(event);
         let mut state_changed = false;
         if let Some(event_handler) = &self.event_handler {
-            println!("handling event for {}", self.identifier.to_string());
             state_changed  = event_handler(&event_processed) || state_changed;
         }        
         for child in self.children.children.iter() {
             state_changed = child.handle_event(event) || state_changed;
         }
         if state_changed{
-            if let Some(state_changed_handler) = &self.state_changed_handler {
+            if let Some(state_changed_handler) = &self.render_state_changed_handler {
                 state_changed_handler();
             }
         }
@@ -1186,6 +1169,7 @@ pub struct UINodeEventRaw{
     pub mouse_right_up: bool,
     pub key_down: Option<KeyCode>, // the frame that the key changes from up to down
     pub cursor_blink: bool, // the frame that the cursor blinks
+    pub pressed_str: Option<String>,
 }
 
 pub struct UINodeEventProcessed{
@@ -1199,4 +1183,5 @@ pub struct UINodeEventProcessed{
     pub cursor_blink: bool, // the frame that the cursor blinks
     pub left_clicked_left_half: bool,
     pub left_clicked_right_half: bool,
+    pub pressed_str: Option<String>, // the string that is pressed
 }

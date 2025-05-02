@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, result};
 use winit::{
     event::{DeviceEvent, ElementState, MouseButton, WindowEvent},
     keyboard::{Key, KeyCode, NamedKey, PhysicalKey},
@@ -17,11 +17,12 @@ pub struct InputContext {
     mouse_right_released_flag: bool,
     cursor_position: Option<(f64, f64)>,
     device_mouse_delta_accumulated: (f64, f64),
+    pressed_str: Option<String>,
 }
 
 impl InputContext {
     pub fn handle_window_event(&mut self, event: &WindowEvent) {
-        self.current_key_down = None;
+        // self.current_key_down = None;
         match event {
             WindowEvent::KeyboardInput {
                 device_id: _,
@@ -30,6 +31,7 @@ impl InputContext {
             } => {
                 let physical_key = event.physical_key;
                 if let PhysicalKey::Code(key_code) = physical_key {
+                    println!("Key event: {:?}", key_code);
                     match event.state {
                         ElementState::Pressed => {
                             self.current_key_down = Some(key_code);
@@ -50,6 +52,7 @@ impl InputContext {
                         }
                     }
                 }
+                self.pressed_str = event.text.as_ref().map(|c| c.to_string());
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 fn handle_mouse_pressed(
@@ -137,7 +140,9 @@ impl InputContext {
         self.key_states.entry(key).or_insert(false).clone()
     }
     pub fn get_current_key_down(&mut self) -> Option<KeyCode> {
-        self.current_key_down
+        let result = self.current_key_down.clone();
+        self.current_key_down = None;
+        result
     }
 
     pub fn get_key_up(&mut self, key: KeyCode) -> bool {
@@ -181,5 +186,10 @@ impl InputContext {
     }
     pub fn device_mouse_delta_accumulated(&mut self) -> (f64, f64) {
         self.device_mouse_delta_accumulated
+    }
+    pub fn get_pressed_str(&mut self) -> Option<String> {
+        let result = self.pressed_str.clone();
+        self.pressed_str = None;
+        result
     }
 }

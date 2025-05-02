@@ -1,72 +1,76 @@
-use std::{any::TypeId, sync::{Arc, Mutex, Weak}};
+use std::{any::TypeId, sync::{Arc, Mutex, RwLock, Weak}};
 
 use crate::{cache::{get_font, CacheValue}, ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
 
-use super::text::CharEvent;
+use super::ui_text::CharEvent;
 
-/// a blinking character has a different id than a non-blinking character
-pub struct UIChar {
+pub struct UICharInner{
     pub character: char,
     pub font_path: String,
     pub scale: f32,
-    pub char_state: Arc<Mutex<UICharState>>,    
-}
-
-pub struct UICharState{
     pub blinking: bool,
     pub showing_cursor: bool,
-    pub char_event_callback: Weak<dyn Fn(u64, CharEvent)>,
+    pub char_event_callback: Arc<dyn Fn(u64, CharEvent)>,
     pub index: u64,
 }
 
-impl UIChar {
-    pub fn new(character: char, 
-        font_path: String, 
-        scale: f32, 
-        char_event_callback: Weak<dyn Fn(u64, CharEvent)>,
-        index: u64,
-    ) -> Self {
-        let char_state = UICharState {
-            blinking: true,
-            showing_cursor: false,
-            char_event_callback,
-            index,
-        };
-        let char_state = Arc::new(Mutex::new(char_state));
-        Self {
-            character,
-            font_path,
-            scale,
-            char_state,
-        }
-    }
+impl UICharInner{
     pub fn get_id(&self) -> UIIdentifier {
-        let char_state = self.char_state.lock().unwrap();
-        let show_cursor = char_state.blinking && char_state.showing_cursor;
+        let show_cursor = self.blinking && self.showing_cursor;
         UIIdentifier::Component(ComponentIdentifier::Char { 
             character: self.character, 
             font_path: self.font_path.clone(), 
             show_cursor
         })
+    }    
+}
+/// a blinking character has a different id than a non-blinking character
+pub struct UIChar {
+    pub inner: Arc<RwLock<UICharInner>>,
+}
+
+
+impl UIChar {
+    pub fn new(character: char, 
+        font_path: String, 
+        scale: f32, 
+        char_event_callback: Arc<dyn Fn(u64, CharEvent)>,
+        index: u64,
+    ) -> Self {
+        let inner = UICharInner {
+            blinking: true,
+            showing_cursor: false,
+            char_event_callback,
+            index,
+            character,
+            font_path,
+            scale,
+        };
+        Self {
+            inner: Arc::new(RwLock::new(inner)),
+        }
     }
+    
 }
 
 impl ToUINode for UIChar {
     fn to_ui_node(
         &self,
     ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
-        let font = get_font(self.font_path.clone());
+        let inner = self.inner.read().unwrap();
+        
+        let font = get_font(inner.font_path.clone());
         let font = match font.as_ref() {
             CacheValue::Font(font) => font,
             _ => panic!("Font not found"),
         };
-        let scale = rusttype::Scale::uniform(self.scale);
+        let scale = rusttype::Scale::uniform(inner.scale);
         let v_metrics = font.v_metrics(scale);
         // round ascent to the nearest integer
         let ascent = v_metrics.ascent.round() as i32;
         let descent = v_metrics.descent.round() as i32;
         let line_gap = v_metrics.line_gap.round() as u32;
-        let glyph = font.glyph(self.character).scaled(scale);
+        let glyph = font.glyph(inner.character).scaled(scale);
         let h_metrics = glyph.h_metrics();
 
         let advance_width = h_metrics.advance_width.round() as u32;
@@ -90,13 +94,11 @@ impl ToUINode for UIChar {
                 RelativeLength::Pixels(0),
             ],
         };
-        let id = self.get_id();
+        let id = inner.get_id();
         let show_cursor = match id{
             UIIdentifier::Component(ComponentIdentifier::Char { show_cursor, .. }) => show_cursor,
             _ => unreachable!(),
         };
-        
-        
         let children: StructuredChildren<BoxDimensionsRelative> = match show_cursor {
             true => {
                 let child = CharCursor{};
@@ -110,25 +112,27 @@ impl ToUINode for UIChar {
             false => StructuredChildren::NoChildren,
         };
         let event_handler = {
-            let char_state = Arc::downgrade(&self.char_state);
+            let inner = Arc::downgrade(&self.inner);
             // let character = self.character;
             let event_handler = move |event: &crate::ui_node::UINodeEventProcessed|->bool {
-                let char_state = char_state.upgrade().unwrap();
-                let mut char_state = char_state.lock().unwrap();
+                let inner = inner.upgrade().unwrap();
+                let mut inner = inner.write().unwrap();
                 let mut change_parent_state = false;
                 // handle mouse clicks
-                let char_event_callback = char_state.char_event_callback.upgrade().unwrap();
-                if event.left_clicked_inside{
-                    char_event_callback(char_state.index, CharEvent::LeftPartClicked);
+                if event.left_clicked_left_half{
+                    println!("left clicked inside char {}", inner.character);
+                    (inner.char_event_callback)(inner.index, CharEvent::LeftPartClicked);
                     change_parent_state = true;
-                }else if event.right_clicked_inside{
-                    char_event_callback(char_state.index, CharEvent::RightPartClicked);
+                }
+                if event.left_clicked_right_half{
+                    println!("right clicked inside char {}", inner.character);
+                    (inner.char_event_callback)(inner.index, CharEvent::RightPartClicked);
                     change_parent_state = true;
                 }
                 // handle toggling binking
                 if event.cursor_blink{                    
-                    if char_state.blinking{
-                        char_state.showing_cursor = !char_state.showing_cursor;
+                    if inner.blinking{
+                        inner.showing_cursor = !inner.showing_cursor;
                         change_parent_state = true;
                     }
                 }
@@ -139,14 +143,14 @@ impl ToUINode for UIChar {
         UINode {
             box_dimensions,
             children,
-            meta: TextureMeta::Font {
-                character: self.character,
-                font_path: self.font_path.clone(),
+            texture_meta: TextureMeta::Font {
+                character: inner.character,
+                font_path: inner.font_path.clone(),
             },
             identifier: id,
-            version: 0,
+            render_version: 0,
             event_handler,
-            state_changed_handler: None,
+            render_state_changed_handler: None,
         }
     }
 }
@@ -182,13 +186,13 @@ impl ToUINode for CharCursor {
         UINode {
             box_dimensions,
             children: StructuredChildren::NoChildren,
-            meta: TextureMeta::Texture {
+            texture_meta: TextureMeta::Texture {
                 path: "assets/text_cursor.png".into(),
             },
             identifier: id,
-            version: 0,
+            render_version: 0,
             event_handler: None,
-            state_changed_handler: None,
+            render_state_changed_handler: None,
         }
     }
 }

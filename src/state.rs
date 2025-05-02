@@ -4,7 +4,7 @@ use cgmath::{Euler, Quaternion};
 use either::Either;
 
 use crate::{
-    input_context::InputContext, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{button::Button, span::{Span, SpanDirection}, text::{CharEvent, Text, TextState}}, ui_node::{
+    input_context::InputContext, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{ui_button::UIButton, ui_span::{UISpan, SpanDirection}, ui_text::{CharEvent, UIText, UITextInner}}, ui_node::{
         BoundedLength, HorizontalAlignment, RelativeLength, ToUINode, UINodeEventRaw, UIRenderInstruction, VerticalAlignment
     }, ui_renderable::TextureMeta
 };
@@ -25,8 +25,8 @@ pub struct State {
     pub ui_render_instructions: Vec<UIRenderInstruction>,
     pub light_position: cgmath::Vector3<f32>,
     pub fps: u32,
-    pub canvas: Option<Span>,
-    pub text_state: Option<Arc<Mutex<TextState>>>,
+    pub canvas: Option<UISpan>,
+    pub text: Option<UIText>,
 }
 
 impl State {
@@ -47,7 +47,7 @@ impl State {
     }
 
     pub fn init(&mut self) {
-        let text = Text::new(
+        let text = UIText::new(
             // format!("fps: {}", self.fps).to_string(),
             "fpsmnlk: 100".into(),
             "assets/consolas.ttf".to_string(),
@@ -63,7 +63,7 @@ impl State {
             BoundedLength::fixed_pixels(300),
             BoundedLength::fixed_pixels(200),
         );
-        let text2 = Text::new(
+        let text2 = UIText::new(
             // format!("fps: {}", self.fps).to_string(),
             "asdf/:?123".into(),
             "assets/consolas.ttf".to_string(),
@@ -76,64 +76,19 @@ impl State {
                 z: 1.0,
                 w: 1.0,
             },
-            BoundedLength::fixed_pixels(300),
+            BoundedLength::fixed_pixels(600),
             BoundedLength::fixed_pixels(200),
         );
-        self.text_state = Some(text.text_state.clone());
-        let span2 = Span::new(
-            SpanDirection::Horizontal,
-            BoundedLength::fixed_pixels(80),
-            BoundedLength::fixed_pixels(60),
-            Either::Right([
-                RelativeLength::Pixels(10),
-                RelativeLength::Pixels(20),
-                RelativeLength::Pixels(30),
-                RelativeLength::Pixels(40),
-            ]),
-            Either::Right([
-                RelativeLength::Pixels(30),
-                RelativeLength::Pixels(40),
-                RelativeLength::Pixels(50),
-                RelativeLength::Pixels(60),
-            ]),
-            HorizontalAlignment::Left,
-            VerticalAlignment::Top,
-            true,
-            TextureMeta::Texture {
-                path: "assets/grass.jpg".into(),
-            },
-        );
-        let span3 = Span::new(
-            SpanDirection::Horizontal,
-            BoundedLength::fixed_pixels(80),
-            BoundedLength::fixed_pixels(60),
-            Either::Right([
-                RelativeLength::Pixels(10),
-                RelativeLength::Pixels(20),
-                RelativeLength::Pixels(30),
-                RelativeLength::Pixels(40),
-            ]),
-            Either::Right([
-                RelativeLength::Pixels(30),
-                RelativeLength::Pixels(40),
-                RelativeLength::Pixels(50),
-                RelativeLength::Pixels(60),
-            ]),
-            HorizontalAlignment::Left,
-            VerticalAlignment::Top,
-            true,
-            TextureMeta::Texture {
-                path: "assets/grass.jpg".into(),
-            },
-        );
-        let button = Button::new(
+        self.text = Some(text.clone());
+        
+        let button = UIButton::new(
             BoundedLength::fixed_pixels(300),
             BoundedLength::fixed_pixels(100),
             Either::Left(RelativeLength::Pixels(20)),
             Either::Left(RelativeLength::Pixels(20)),
             None,
         );
-        let mut span = Span::new(
+        let span = UISpan::new(
             SpanDirection::Horizontal,
             BoundedLength::fixed_dependent(RelativeLength::RelativeScreenWidth(0.9)),
             BoundedLength::fixed_dependent(RelativeLength::RelativeScreenHeight(0.9)),
@@ -167,11 +122,8 @@ impl State {
             *fps_timer = Instant::now();
             let dummy_callback = |index: u64, event: CharEvent|{};
             let dummy_callback = Arc::new(dummy_callback);
-            self.text_state.as_ref().unwrap().lock().unwrap().set_text(
+            self.text.as_ref().unwrap().set_text(
                 format!("FPS: {}", self.fps).to_string(),
-                "assets/consolas.ttf".to_string(), 
-                50.0,
-                dummy_callback
             );
         } else {
             self.accumulated_frame_num += 1;
@@ -240,6 +192,7 @@ impl State {
 
         let cursor_position = input_context.mouse_position();
         let cursor_position = cursor_position.unwrap_or((0.0, 0.0));
+        let pressed_str = input_context.get_pressed_str();
         let ui_node_event = UINodeEventRaw{
             mouse_x: cursor_position.0 as u32,
             mouse_y: cursor_position.1 as u32,
@@ -251,6 +204,7 @@ impl State {
             mouse_right_up: input_context.mouse_right_up(),
             key_down: input_context.get_current_key_down(),
             cursor_blink,
+            pressed_str,
         };
         let render_instruction = canvas.update_and_to_instruction(screen_width, screen_height, &ui_node_event);
         self.submit_ui_render_instruction(render_instruction);
@@ -274,7 +228,7 @@ impl Default for State {
             light_position: cgmath::Vector3::new(0.0, 0.0, 0.0),
             fps: 0,
             canvas: None,
-            text_state: None,
+            text:None,
         }
     }
 }
