@@ -2,7 +2,7 @@ use std::{any::TypeId, sync::{Arc, Mutex, RwLock}};
 
 use either::Either;
 
-use crate::{ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
+use crate::{ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, DependentLength, StructuredChildren, ToUINode, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
 
 pub enum SpanDirection {
     Horizontal,
@@ -32,8 +32,8 @@ impl UISpan {
         direction: SpanDirection,
         width: BoundedLength,
         height: BoundedLength,
-        margin: Either<RelativeLength, [RelativeLength; 4]>,
-        padding: Either<RelativeLength, [RelativeLength; 4]>,
+        margin: Either<DependentLength, [DependentLength; 4]>,
+        padding: Either<DependentLength, [DependentLength; 4]>,
         h_alignment: HorizontalAlignment,
         v_alignment: VerticalAlignment,
         uniform_division: bool,

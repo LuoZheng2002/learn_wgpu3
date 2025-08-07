@@ -1,6 +1,6 @@
 use std::{any::TypeId, sync::{Arc, Mutex, RwLock, Weak}};
 
-use crate::{cache::{get_font, CacheValue}, ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
+use crate::{cache::{get_font, CacheValue}, ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, DependentLength, StructuredChildren, ToUINode, UIIdentifier, UINode, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
 
 use super::ui_text::CharEvent;
 
@@ -82,16 +82,16 @@ impl ToUINode for UIChar {
             width: BoundedLength::fixed_pixels(width),
             height: BoundedLength::fixed_pixels(height),
             margin: [
-                RelativeLength::Pixels(line_gap / 2),
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(line_gap / 2),
-                RelativeLength::Pixels(0),
+                DependentLength::Pixels(line_gap / 2),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(line_gap / 2),
+                DependentLength::Pixels(0),
             ],
             padding: [
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
             ],
         };
         let id = inner.get_id();
@@ -164,19 +164,19 @@ impl ToUINode for CharCursor {
         &self,
     ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
         let box_dimensions = BoxDimensionsRelative {
-            width: BoundedLength::fixed_dependent(RelativeLength::RelativeParentHeight(0.05)),
-            height: BoundedLength::fixed_dependent(RelativeLength::RelativeParentHeight(1.0)),
+            width: BoundedLength::fixed_dependent(DependentLength::RelativeParentHeight(0.05)),
+            height: BoundedLength::fixed_dependent(DependentLength::RelativeParentHeight(1.0)),
             margin: [
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
             ],
             padding: [
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
             ],
         };
         let id = UIIdentifier::Component(ComponentIdentifier::Default {

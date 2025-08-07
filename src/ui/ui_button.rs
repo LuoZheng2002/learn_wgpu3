@@ -2,7 +2,7 @@ use std::{any::TypeId, sync::{Arc, Mutex, RwLock}};
 
 use either::Either;
 
-use crate::{ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UINodeEventProcessed, UINodeEventRaw, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
+use crate::{ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, DependentLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UINodeEventProcessed, UINodeEvent, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
 
 struct UIButtonInner{
     pub hovered: bool,
@@ -26,8 +26,8 @@ impl UIButton {
     pub fn new(
         width: BoundedLength,
         height: BoundedLength,
-        margin: Either<RelativeLength, [RelativeLength; 4]>,
-        padding: Either<RelativeLength, [RelativeLength; 4]>,
+        margin: Either<DependentLength, [DependentLength; 4]>,
+        padding: Either<DependentLength, [DependentLength; 4]>,
         click_callback: Option<Box<dyn Fn()>>,
     ) -> Self {
         let margin = match margin {

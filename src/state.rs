@@ -5,7 +5,7 @@ use either::Either;
 
 use crate::{
     input_context::InputContext, model_instance::ModelInstance, model_meta::ModelMeta, my_camera::MyCamera, ui::{ui_button::UIButton, ui_span::{UISpan, SpanDirection}, ui_text::{CharEvent, UIText, UITextInner}}, ui_node::{
-        BoundedLength, HorizontalAlignment, RelativeLength, ToUINode, UINodeEventRaw, UIRenderInstruction, VerticalAlignment
+        BoundedLength, HorizontalAlignment, DependentLength, ToUINode, UINodeEvent, UIRenderInstruction, VerticalAlignment
     }, ui_renderable::TextureMeta
 };
 
@@ -52,8 +52,8 @@ impl State {
             "fpsmnlk: 100".into(),
             "assets/consolas.ttf".to_string(),
             50.0,
-            Either::Left(RelativeLength::Pixels(20)),
-            Either::Left(RelativeLength::Pixels(20)),
+            Either::Left(DependentLength::Pixels(20)),
+            Either::Left(DependentLength::Pixels(20)),
             cgmath::Vector4 {
                 x: 0.0,
                 y: 0.0,
@@ -68,8 +68,8 @@ impl State {
             "asdf/:?123".into(),
             "assets/consolas.ttf".to_string(),
             50.0,
-            Either::Left(RelativeLength::Pixels(20)),
-            Either::Left(RelativeLength::Pixels(20)),
+            Either::Left(DependentLength::Pixels(20)),
+            Either::Left(DependentLength::Pixels(20)),
             cgmath::Vector4 {
                 x: 0.0,
                 y: 0.0,
@@ -84,16 +84,16 @@ impl State {
         let button = UIButton::new(
             BoundedLength::fixed_pixels(300),
             BoundedLength::fixed_pixels(100),
-            Either::Left(RelativeLength::Pixels(20)),
-            Either::Left(RelativeLength::Pixels(20)),
+            Either::Left(DependentLength::Pixels(20)),
+            Either::Left(DependentLength::Pixels(20)),
             None,
         );
         let span = UISpan::new(
             SpanDirection::Horizontal,
-            BoundedLength::fixed_dependent(RelativeLength::RelativeScreenWidth(0.9)),
-            BoundedLength::fixed_dependent(RelativeLength::RelativeScreenHeight(0.9)),
-            Either::Left(RelativeLength::Pixels(10)),
-            Either::Left(RelativeLength::Pixels(10)),
+            BoundedLength::fixed_dependent(DependentLength::RelativeScreenWidth(0.9)),
+            BoundedLength::fixed_dependent(DependentLength::RelativeScreenHeight(0.9)),
+            Either::Left(DependentLength::Pixels(10)),
+            Either::Left(DependentLength::Pixels(10)),
             HorizontalAlignment::Left,
             VerticalAlignment::Top,
             false,
@@ -193,7 +193,7 @@ impl State {
         let cursor_position = input_context.mouse_position();
         let cursor_position = cursor_position.unwrap_or((0.0, 0.0));
         let pressed_str = input_context.get_pressed_str();
-        let ui_node_event = UINodeEventRaw{
+        let ui_node_event = UINodeEvent{
             mouse_x: cursor_position.0 as u32,
             mouse_y: cursor_position.1 as u32,
             mouse_left: input_context.mouse_left(),

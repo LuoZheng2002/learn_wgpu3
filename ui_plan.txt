@@ -1,0 +1,18 @@
+the texture cache of a ui updates when 
+1. the size of the ui changes
+2. its own texture meta changes
+3. children changes / the texture cache of child elements changes 
+
+needs parent and child relationship
+
+ui node can only be generated once 
+
+logical ui (scroll view, etc.) vs. ui node
+
+keeping track of the sizes is too difficult, so calculate each frame and compare.
+for live elements, it has cached previous size to compare.
+for new elements, it has no previous size and new size is always different from the previous size
+
+the ui node pass:
+1. handle event to change ui node essentials (target dimensions, texture meta, ) and ui state
+2. 

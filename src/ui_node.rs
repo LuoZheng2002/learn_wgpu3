@@ -1,4 +1,4 @@
-// length options: fixed, depends on siblings, depends on parent, depends on children
+// length options: fixed, depends on parent, depends on children
 
 // decide parents first, then siblings, then children
 
@@ -7,25 +7,56 @@
 // padding, margin, children
 // width, height,
 
-use std::{any::TypeId, collections::HashMap, i32, sync::Mutex, vec};
+use std::{any::TypeId, collections::HashMap, i32, sync::{Arc, Mutex, RwLock, Weak}, vec};
 
 use either::Either;
 use lazy_static::lazy_static;
 use winit::keyboard::KeyCode;
 
-use crate::{state, ui::UICell, ui_renderable::TextureMeta};
+use crate::{my_texture::MyTexture, state, ui::UICell, ui_renderable::TextureMeta};
+
+// handle event -> state change -> render
+
+// each ui is a rectangular region, with its own texture and a cached texture that includes its children
+
+// each ui must have: the calculated size and position (from last frame), the target relative size, position, margin, padding (when they change, the ui is invalidated)
+// each ui must have: a callback function that changes the ui's target relative size
+
+// ui object -> ui node (that handles events but does not calculate positions and sizes, invalidates ui parameters / texture if necessary) -> 
+
+// the cached texture of a ui is invalidated if its size, texture, or children count, or children's cached texture, or the array layout is invalidated
+
+// ui node needs a pointer to the optional cached texture
+// if it is none, it will be created by rendering its own texture, and childrens' cached textures which depends on its size, childrens' sizes, childrens' positions, and childrens' clip boxes (relative)
+
+// the ui can be updated either from code or from events
+// we want to directly call the methods of a ui, and mark it as invalidated
+// we want to make its parents to be invalidated too, which is a separate pass
+// if a component is not invalidated, then its size and positions are also not invalidated, and all its children can be ignored, meaning we don't need to calculate their positions and sizes
+
+// every ui needs to implement ToUINode
+// StructuredChildren can be reduced to horizontal and vertical layouts
+
+// ui node needs to include: optional cached texture, texture meta, relative box dimensions, cached absolute box dimensions, structured children, 
+// event handler, 
+// basically each ui element stores a mutable ui node, 
 
 
-
+/// ui node pass: ui to ui node -> 
+/// handle event (without invalidating self) -> 
+/// invalidate nodes because of texture meta ->
+/// calculate all components' dimensions (translate dependencies to pointers -> turn into virtual boxes (with boxs' width and height to be expressions) -> flatten -> solve iteratively) ->
+/// propagate invalidation from children to parents
+///  -> calculate dimensions (for invalidated components) -> into render instruction
 pub trait ToUINode {
     fn to_ui_node(
         &self,
-    ) -> UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>>;
+    ) -> UINode;
     fn update_and_to_instruction(
         &self,        
         screen_width: u32,
         screen_height: u32,
-        event: &UINodeEventRaw,
+        event: &UINodeEvent,
     )->UIRenderInstruction{
         let ui_node = self.to_ui_node();
         let ui_node = ui_node.calculate_dimensions(screen_width, screen_height, screen_width, screen_height);
@@ -64,36 +95,26 @@ pub enum VerticalAlignment {
     Bottom,
 }
 
-pub enum StructuredChildren<B: BoxDimensions> {
-    NoChildren,
-    OneChild {
-        h_alignment: HorizontalAlignment,
-        v_alignment: VerticalAlignment,
-        child: Box<UINode<B, StructuredChildren<B>>>,
-    },
-    HorizontalLayout {
-        h_alignment: HorizontalAlignment,
-        v_alignment: VerticalAlignment,
-        uniform_division: bool,
-        children: Vec<UINode<B, StructuredChildren<B>>>,
-    },
-    // HorizontalWrap(Vec<Box<UINode>>),
-    VerticalLayout {
-        h_alignment: HorizontalAlignment,
-        v_alignment: VerticalAlignment,
-        uniform_division: bool,
-        children: Vec<UINode<B, StructuredChildren<B>>>,
-    }
+#[derive(Clone, Copy)]
+pub enum ChildrenLayout{
+    Horizontal,
+    Vertical,
+}
+
+pub struct StructuredChildren{   
+    h_alignment: HorizontalAlignment,
+    v_alignment: VerticalAlignment,
+    uniform_division: bool,
+    layout: ChildrenLayout,
+    children: Vec<UINode>,
 }
 
 // todo: not sure if putting alignment here is a good idea
 
 /// it means that the UINode that owns this struct is actually the content, so it has alignment information for calculating
 /// its position with respect to the parent (cell)
-pub struct ChildrenAreCells {
-    cells: Vec<UINode<BoxDimensionsWithGlobal, ChildIsContent>>,
-    h_alignment: HorizontalAlignment,
-    v_alignment: VerticalAlignment,
+pub struct ChildrenAreDummyCells {
+    cells: Vec<DummyCell>,
 } //an ui node that owns the "Cells" struct is actually the content
 // for each UINode<u32, u32, Content> we need to add position information
 // a cell has a fixed size and position, but the content doesn't
@@ -104,9 +125,11 @@ pub struct ChildrenAreCells {
 // alignment
 
 pub struct ChildIsContent {
-    position_x: u32, // top left corner relative to parent
-    position_y: u32,
-    content: UINode<BoxDimensionsWithGlobal, ChildrenAreCells>,
+    cell_rel_pos_x: u32, // top left corner relative to parent
+    cell_rel_pos_y: u32,
+    cell_width: u32,
+    cell_height: u32,
+    content: UINode<BoxDimensionsWithGlobal, ChildrenAreDummyCells>,
 }
 
 pub struct UnifiedChildren {
@@ -193,14 +216,14 @@ impl StructuredChildren<BoxDimensionsRelative> {
 }
 
 #[derive(Clone, Copy)]
-pub enum RelativeLength {
+pub enum DependentLength {
     Pixels(u32),
     RelativeScreenWidth(f32),
     RelativeScreenHeight(f32),
     RelativeParentWidth(f32),
     RelativeParentHeight(f32),
 }
-impl RelativeLength {
+impl DependentLength {
     pub fn zero() -> Self {
         Self::Pixels(0)
     }
@@ -208,20 +231,20 @@ impl RelativeLength {
 
 #[derive(Clone)]
 pub struct BoundedLength {
-    pub preferred_length: RelativeLength,
-    pub min_length: Option<RelativeLength>,
-    pub max_length: Option<RelativeLength>,
+    pub preferred_length: DependentLength,
+    pub min_length: Option<DependentLength>,
+    pub max_length: Option<DependentLength>,
 }
 
 impl BoundedLength {
     pub fn zero() -> Self {
         Self {
-            preferred_length: RelativeLength::zero(),
-            min_length: Some(RelativeLength::zero()),
-            max_length: Some(RelativeLength::zero()),
+            preferred_length: DependentLength::zero(),
+            min_length: Some(DependentLength::zero()),
+            max_length: Some(DependentLength::zero()),
         }
     }
-    pub fn fixed_dependent(length: RelativeLength) -> Self {
+    pub fn fixed_dependent(length: DependentLength) -> Self {
         Self {
             preferred_length: length.clone(),
             min_length: Some(length.clone()),
@@ -229,7 +252,7 @@ impl BoundedLength {
         }
     }
     pub fn fixed_pixels(length: u32) -> Self {
-        Self::fixed_dependent(RelativeLength::Pixels(length))
+        Self::fixed_dependent(DependentLength::Pixels(length))
     }
 }
 
@@ -239,12 +262,12 @@ impl UINodeLength1 for BoundedLength {}
 
 pub trait UINodeLength2 {}
 impl UINodeLength2 for u32 {}
-impl UINodeLength2 for RelativeLength {}
+impl UINodeLength2 for DependentLength {}
 
 pub trait UIChildren<B: BoxDimensions> {}
 
 impl<B: BoxDimensions> UIChildren<B> for StructuredChildren<B> {}
-impl UIChildren<BoxDimensionsWithGlobal> for ChildrenAreCells {}
+impl UIChildren<BoxDimensionsWithGlobal> for ChildrenAreDummyCells {}
 impl UIChildren<BoxDimensionsWithGlobal> for ChildIsContent {}
 impl UIChildren<BoxDimensionsWithGlobal> for UnifiedChildren {}
 
@@ -252,8 +275,8 @@ impl UIChildren<BoxDimensionsWithGlobal> for UnifiedChildren {}
 pub struct BoxDimensionsRelative {
     pub width: BoundedLength,
     pub height: BoundedLength,
-    pub margin: [RelativeLength; 4],  // top, right, bottom, left
-    pub padding: [RelativeLength; 4], // top, right, bottom, left
+    pub margin: [DependentLength; 4],  // top, right, bottom, left
+    pub padding: [DependentLength; 4], // top, right, bottom, left
 }
 #[derive(Clone)]
 pub struct BoxDimensionsAbsolute {
@@ -403,191 +426,349 @@ lazy_static! {
         Mutex::new(UIIdentifierGenerator::new());
 }
 
-pub struct UINode<B: BoxDimensions, C: UIChildren<B>> {
-    pub box_dimensions: B,
-    pub children: C,       // assuming horizontal layout
-    pub texture_meta: TextureMeta, // contains optional texture information
-    pub identifier: UIIdentifier,
-    pub render_version: u64,
-    pub event_handler: Option<Box<dyn Fn(&UINodeEventProcessed)->bool>>,
-    pub render_state_changed_handler: Option<Box<dyn Fn()>>,
+// pub struct UINode<B: BoxDimensions, C: UIChildren<B>> {
+//     pub box_dimensions: B,
+//     pub children: C,       // assuming horizontal layout
+//     pub texture_meta: TextureMeta, // contains optional texture information
+//     pub identifier: UIIdentifier,
+//     pub render_version: u64,
+//     pub event_handler: Option<Box<dyn Fn(&UINodeEventProcessed)->bool>>,
+//     pub render_state_changed_handler: Option<Box<dyn Fn()>>,
+// }
+
+pub enum Expression{
+    None,
+    Constant(i32),
+    Sum2(Weak<RwLock<Expression>>, Weak<RwLock<Expression>>),
+    Sum3(Weak<RwLock<Expression>>, Weak<RwLock<Expression>>, Weak<RwLock<Expression>>),
+    Diff2(Weak<RwLock<Expression>>, Weak<RwLock<Expression>>),
+    Diff3(Weak<RwLock<Expression>>, Weak<RwLock<Expression>>, Weak<RwLock<Expression>>),
+    Mul(Weak<RwLock<Expression>>, f32),
 }
 
-impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
-    pub fn calculate_dimensions(
+// need a smart expression type that references other expressions and record expressions that referece self
+// if one expression changes, it will notify all the expressions that reference it
+// if expressions corresponding to a node's width and height are changed, the node will be invalidated
+
+// an expression can be changed if the expression itself changes or its value changes
+pub struct CachedDimensions{
+    pub width: u32,
+    pub height: u32,
+    pub rel_x: i32,
+    pub rel_y: i32,
+    pub global_x: i32,
+    pub global_y: i32,
+    pub bound_x: i32,
+    pub bound_y: i32,
+    pub bound_width: u32,
+    pub bound_height: u32,
+    pub rel_x_inside_box: i32,
+    pub rel_y_inside_box: i32,
+    // previous record of width and height for determining if the size has changed
+    pub prev_width: u32,
+    pub prev_height: u32,
+}
+
+pub struct DependentDimensions{
+    pub width: DependentLength,
+    pub height: DependentLength,
+    pub margin: [i32; 4],
+    pub padding: [i32; 4],
+}
+// new problem: previously use margin to implement the offset of scroll view
+// hopefully if the right and bottom margin are set to 0, it will not affect the size of the box
+
+pub struct UINodeEssentials{
+    pub cached_dimensions: CachedDimensions,
+    pub dependent_dimensions: DependentDimensions,
+    pub cached_texture: Option<MyTexture>,
+    pub texture_meta: TextureMeta,
+    // previous texture meta for determining if the texture has changed
+    pub prev_texture_meta: TextureMeta,
+}
+// event handler can change: texture meta (button), dimensions (draggable split bar, but with constraints)
+
+// we may need extra ui's state to handle events
+
+
+
+// the event handler needs to capture both UINodeEssentials and a mutable state of the UI.
+
+
+// uinode itself is disposable
+// everything that is mutable should be in the RwLock
+pub struct UINode{
+    pub essentials: Weak<RwLock<UINodeEssentials>>, // it has to modify the dimensions of the UI
+    pub children: StructuredChildren,
+    pub event_handler: Option<Weak<dyn Fn(&UINodeEvent)>>,
+}
+
+pub struct VirtualBox{
+    pub children: Vec<VirtualBox>,
+    pub box_rel_x: Arc<RwLock<Expression>>, // this can be determined
+    pub box_rel_y: Arc<RwLock<Expression>>,
+    pub box_width: Arc<RwLock<Expression>>,
+    pub box_height: Arc<RwLock<Expression>>,
+    // pub horizontal_alignment: HorizontalAlignment,
+    // pub vertical_alignment: VerticalAlignment,
+}
+pub struct UINodeWithBoundedChildren{
+    pub essentials: Weak<RwLock<UINodeEssentials>>,
+    pub children: Vec<VirtualBox>,
+    pub event_handler: Option<Weak<dyn Fn(&UINodeEvent)>>,
+}
+
+impl UINode{
+    pub fn handle_event(&self, event: &UINodeEvent){
+        if let Some(handler) = self.event_handler.as_ref(){
+            let handler = handler.upgrade().unwrap();
+            handler(event);
+        }
+        for child in self.children.children.iter(){
+            child.handle_event(event);
+        }
+    }
+
+    pub fn invalidate_by_texture_meta(&self){
+
+    }
+
+    /// if child is invalidated, parent must be invalidated because the texture changes
+    /// but what about the child's siblings? -> it depends on whether the dimensions of the child is changed
+    /// if a component's size changes, it is invalidated
+    /// so a component is invalidated if its size changes, its texture meta changes, or its children changes
+    /// so we need to calculate the size of the children first 
+    /// early stop criteria: if previous size == new size
+    /// maybe separate texture invalidation and size invalidation?
+    /// a component needs to redraw if its size changes, or its texture meta changes, or its children changes
+    /// easy solution for size changes: recalculate all the components' sizes and positions
+    /// and if size changes between frames, invalidate the texture
+    /// this function does not take account of invalidation caused by size changes
+    pub fn propagate_invalidation_from_children(&self)->bool{
+        let mut invalidate_self = false;
+        let children = &self.children.children;
+        for child in children.iter(){
+            if child.propagate_invalidation_from_children(){
+                invalidate_self = true;
+            }
+        }
+        let essentials = self.essentials.upgrade().unwrap();
+        let mut essentials = essentials.write().unwrap();
+        if invalidate_self{
+            essentials.cached_texture = None; // invalidate the texture
+        }
+        essentials.cached_texture.is_none()
+    }
+    /// references: dependent dimensions
+    /// produces: cached dimensions in expression form
+    pub fn translate_dependencies_to_pointers(&self){
+
+    }
+    /// references: dependent dimensions
+    /// produces: width, height (referencing dependent width and height), rel_x_inside_box, rel_y_inside_box (referecing margin)
+    /// 
+    pub fn calculate_dimensions(&self){
+
+    }
+    pub fn add_bounding_box(
         self,
-        parent_width: u32,
-        parent_height: u32,
-        screen_width: u32,
-        screen_height: u32,
-    ) -> UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
-        let dimensions = &self.box_dimensions;
-        fn convert_dependent_length_to_u32(
-            length_unit: &RelativeLength,
-            parent_width: u32,
-            parent_height: u32,
-            screen_width: u32,
-            screen_height: u32,
-        ) -> u32 {
-            match length_unit {
-                RelativeLength::Pixels(pixels) => *pixels,
-                RelativeLength::RelativeScreenWidth(relative) => {
-                    (screen_width as f32 * relative) as u32
-                }
-                RelativeLength::RelativeScreenHeight(relative) => {
-                    (screen_height as f32 * relative) as u32
-                }
-                RelativeLength::RelativeParentWidth(relative) => {
-                    (parent_width as f32 * relative) as u32
-                }
-                RelativeLength::RelativeParentHeight(relative) => {
-                    (parent_height as f32 * relative) as u32
-                }
-            }
-        }
-        fn convert_bounded_length_to_u32(
-            length: &BoundedLength,
-            parent_width: u32,
-            parent_height: u32,
-            screen_width: u32,
-            screen_height: u32,
-        ) -> u32 {
-            let BoundedLength {
-                preferred_length,
-                min_length,
-                max_length,
-            } = length;
-            let preferred_length = convert_dependent_length_to_u32(
-                preferred_length,
-                parent_width,
-                parent_height,
-                screen_width,
-                screen_height,
-            );
-            let min_length = match min_length {
-                Some(length) => convert_dependent_length_to_u32(
-                    length,
-                    parent_width,
-                    parent_height,
-                    screen_width,
-                    screen_height,
-                ),
-                None => u32::MIN,
-            };
-            let max_length = match max_length {
-                Some(length) => convert_dependent_length_to_u32(
-                    length,
-                    parent_width,
-                    parent_height,
-                    screen_width,
-                    screen_height,
-                ),
-                None => u32::MAX,
-            };
-            if min_length > max_length {
-                panic!("min length is greater than max length");
-            }
-            // clamp preferred length to min and max
-            preferred_length.clamp(min_length, max_length)
-        }
-        // result
+        box_rel_x: i32,
+        box_rel_y: i32,
+        box_width: u32,
+        box_height: u32,
+        horizontal_alignment: HorizontalAlignment,
+        vertical_alignment: VerticalAlignment,
+    )-> VirtualBox{
 
-        let width = convert_bounded_length_to_u32(
-            &dimensions.width,
-            parent_width,
-            parent_height,
-            screen_width,
-            screen_height,
-        );
-        let height = convert_bounded_length_to_u32(
-            &dimensions.height,
-            parent_width,
-            parent_height,
-            screen_width,
-            screen_height,
-        );
 
-        let children: StructuredChildren<BoxDimensionsAbsolute> = self
-            .children
-            .calculate_dimensions(width, height, screen_width, screen_height);
-
-        let margin = [
-            convert_dependent_length_to_u32(
-                &dimensions.margin[0],
-                parent_width,
-                parent_height,
-                screen_width,
-                screen_height,
-            ),
-            convert_dependent_length_to_u32(
-                &dimensions.margin[1],
-                parent_width,
-                parent_height,
-                screen_width,
-                screen_height,
-            ),
-            convert_dependent_length_to_u32(
-                &dimensions.margin[2],
-                parent_width,
-                parent_height,
-                screen_width,
-                screen_height,
-            ),
-            convert_dependent_length_to_u32(
-                &dimensions.margin[3],
-                parent_width,
-                parent_height,
-                screen_width,
-                screen_height,
-            ),
-        ];
-        let padding = [
-            convert_dependent_length_to_u32(
-                &dimensions.padding[0],
-                parent_width,
-                parent_height,
-                screen_width,
-                screen_height,
-            ),
-            convert_dependent_length_to_u32(
-                &dimensions.padding[1],
-                parent_width,
-                parent_height,
-                screen_width,
-                screen_height,
-            ),
-            convert_dependent_length_to_u32(
-                &dimensions.padding[2],
-                parent_width,
-                parent_height,
-                screen_width,
-                screen_height,
-            ),
-            convert_dependent_length_to_u32(
-                &dimensions.padding[3],
-                parent_width,
-                parent_height,
-                screen_width,
-                screen_height,
-            ),
-        ];
-        let box_dimensions = BoxDimensionsAbsolute {
-            width,
-            height,
-            margin,
-            padding,
-        };
-        UINode {
-            box_dimensions,
-            children,
-            texture_meta: self.texture_meta,
-            identifier: self.identifier,
-            render_version: self.render_version,
-            event_handler: self.event_handler,
-            render_state_changed_handler: self.render_state_changed_handler,
+        VirtualBox { 
+            ui_node: (), 
+            box_rel_x,
+            box_rel_y,
+            box_width,
+            box_height, 
+            horizontal_alignment, 
+            vertical_alignment 
         }
     }
 }
+
+
+// impl UINode<BoxDimensionsRelative, StructuredChildren<BoxDimensionsRelative>> {
+//     pub fn calculate_dimensions(
+//         self,
+//         parent_width: u32,
+//         parent_height: u32,
+//         screen_width: u32,
+//         screen_height: u32,
+//     ) -> UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
+//         let dimensions = &self.box_dimensions;
+//         fn convert_dependent_length_to_u32(
+//             length_unit: &DependentLength,
+//             parent_width: u32,
+//             parent_height: u32,
+//             screen_width: u32,
+//             screen_height: u32,
+//         ) -> u32 {
+//             match length_unit {
+//                 DependentLength::Pixels(pixels) => *pixels,
+//                 DependentLength::RelativeScreenWidth(relative) => {
+//                     (screen_width as f32 * relative) as u32
+//                 }
+//                 DependentLength::RelativeScreenHeight(relative) => {
+//                     (screen_height as f32 * relative) as u32
+//                 }
+//                 DependentLength::RelativeParentWidth(relative) => {
+//                     (parent_width as f32 * relative) as u32
+//                 }
+//                 DependentLength::RelativeParentHeight(relative) => {
+//                     (parent_height as f32 * relative) as u32
+//                 }
+//             }
+//         }
+//         fn convert_bounded_length_to_u32(
+//             length: &BoundedLength,
+//             parent_width: u32,
+//             parent_height: u32,
+//             screen_width: u32,
+//             screen_height: u32,
+//         ) -> u32 {
+//             let BoundedLength {
+//                 preferred_length,
+//                 min_length,
+//                 max_length,
+//             } = length;
+//             let preferred_length = convert_dependent_length_to_u32(
+//                 preferred_length,
+//                 parent_width,
+//                 parent_height,
+//                 screen_width,
+//                 screen_height,
+//             );
+//             let min_length = match min_length {
+//                 Some(length) => convert_dependent_length_to_u32(
+//                     length,
+//                     parent_width,
+//                     parent_height,
+//                     screen_width,
+//                     screen_height,
+//                 ),
+//                 None => u32::MIN,
+//             };
+//             let max_length = match max_length {
+//                 Some(length) => convert_dependent_length_to_u32(
+//                     length,
+//                     parent_width,
+//                     parent_height,
+//                     screen_width,
+//                     screen_height,
+//                 ),
+//                 None => u32::MAX,
+//             };
+//             if min_length > max_length {
+//                 panic!("min length is greater than max length");
+//             }
+//             // clamp preferred length to min and max
+//             preferred_length.clamp(min_length, max_length)
+//         }
+//         // result
+
+//         let width = convert_bounded_length_to_u32(
+//             &dimensions.width,
+//             parent_width,
+//             parent_height,
+//             screen_width,
+//             screen_height,
+//         );
+//         let height = convert_bounded_length_to_u32(
+//             &dimensions.height,
+//             parent_width,
+//             parent_height,
+//             screen_width,
+//             screen_height,
+//         );
+
+//         let children: StructuredChildren<BoxDimensionsAbsolute> = self
+//             .children
+//             .calculate_dimensions(width, height, screen_width, screen_height);
+
+//         let margin = [
+//             convert_dependent_length_to_u32(
+//                 &dimensions.margin[0],
+//                 parent_width,
+//                 parent_height,
+//                 screen_width,
+//                 screen_height,
+//             ),
+//             convert_dependent_length_to_u32(
+//                 &dimensions.margin[1],
+//                 parent_width,
+//                 parent_height,
+//                 screen_width,
+//                 screen_height,
+//             ),
+//             convert_dependent_length_to_u32(
+//                 &dimensions.margin[2],
+//                 parent_width,
+//                 parent_height,
+//                 screen_width,
+//                 screen_height,
+//             ),
+//             convert_dependent_length_to_u32(
+//                 &dimensions.margin[3],
+//                 parent_width,
+//                 parent_height,
+//                 screen_width,
+//                 screen_height,
+//             ),
+//         ];
+//         let padding = [
+//             convert_dependent_length_to_u32(
+//                 &dimensions.padding[0],
+//                 parent_width,
+//                 parent_height,
+//                 screen_width,
+//                 screen_height,
+//             ),
+//             convert_dependent_length_to_u32(
+//                 &dimensions.padding[1],
+//                 parent_width,
+//                 parent_height,
+//                 screen_width,
+//                 screen_height,
+//             ),
+//             convert_dependent_length_to_u32(
+//                 &dimensions.padding[2],
+//                 parent_width,
+//                 parent_height,
+//                 screen_width,
+//                 screen_height,
+//             ),
+//             convert_dependent_length_to_u32(
+//                 &dimensions.padding[3],
+//                 parent_width,
+//                 parent_height,
+//                 screen_width,
+//                 screen_height,
+//             ),
+//         ];
+//         let box_dimensions = BoxDimensionsAbsolute {
+//             width,
+//             height,
+//             margin,
+//             padding,
+//         };
+//         UINode {
+//             box_dimensions,
+//             children,
+//             texture_meta: self.texture_meta,
+//             identifier: self.identifier,
+//             render_version: self.render_version,
+//             event_handler: self.event_handler,
+//             render_state_changed_handler: self.render_state_changed_handler,
+//         }
+//     }
+// }
 
 // the canvas will be rendered on the entire screen
 pub struct UIRenderInstruction {
@@ -603,58 +784,55 @@ pub struct UIRenderInstruction {
     pub texture_meta: TextureMeta,
 }
 
+// a dummy cell that is not a uinode, and contains information about the cell's position and size, and the uinode inside it
+
+pub struct DummyCell{
+    pub rel_pos_x: u32, // top left corner relative to parent
+    pub rel_pos_y: u32,
+    pub global_pos_x: u32,
+    pub global_pos_y: u32,
+    pub width: u32,
+    pub height: u32,
+    pub h_alignment: HorizontalAlignment,
+    pub v_alignment: VerticalAlignment,
+    pub content: UINode<BoxDimensionsWithGlobal, ChildrenAreDummyCells>,
+}
+
+
 impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
     fn wrap_node_with_cell(
-        node: UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>>,
+        self,
         cell_width: u32,
         cell_height: u32,
-        cell_rel_pos_x: u32,
-        cell_rel_pos_y: u32,
+        cell_rel_x: u32,
+        cell_rel_y: u32,
         parent_global_x: u32,
         parent_global_y: u32,
-        h_alignment: HorizontalAlignment,
+        h_alignment: HorizontalAlignment, // the alignment of the content with respect to the cell
         v_alignment: VerticalAlignment,
-        parent_id: ComponentIdentifier,
-        cell_index: u64,
-        parent_version: u64,
-    ) -> UINode<BoxDimensionsWithGlobal, ChildIsContent> {
-        let cell_global_pos_x = parent_global_x + cell_rel_pos_x;
-        let cell_global_pos_y = parent_global_y + cell_rel_pos_y;
-
-        let cell_children = ChildIsContent {
-            position_x: cell_rel_pos_x, // likely to be useless
-            position_y: cell_rel_pos_y,
-            content: node.flatten_children(
-                cell_global_pos_x,
-                cell_global_pos_y,
+        // parent_id: ComponentIdentifier,
+        // cell_index: u64,
+        // parent_version: u64,
+    ) -> DummyCell {
+        let cell_global_x = parent_global_x + cell_rel_x;
+        let cell_global_y = parent_global_y + cell_rel_y;
+        DummyCell { 
+            rel_pos_x: cell_rel_x, 
+            rel_pos_y: cell_rel_y, 
+            global_pos_x: cell_global_x, 
+            global_pos_y: cell_global_y, 
+            width: cell_width,
+            height: cell_height,
+            h_alignment,
+            v_alignment,
+            content: self.flatten_children(
+                cell_global_x,
+                cell_global_y,
                 cell_width,
                 cell_height,
                 h_alignment,
                 v_alignment,
             ),
-        };
-        let cell_meta = TextureMeta::Texture {
-            path: "assets/transparent_frame.png".into(),
-        };
-        let cell_dimensions = BoxDimensionsWithGlobal {
-            width: cell_width,
-            height: cell_height,
-            rel_pos_x: cell_rel_pos_x,
-            rel_pos_y: cell_rel_pos_y,
-            global_pos_x: cell_global_pos_x,
-            global_pos_y: cell_global_pos_y,
-            margin: [0, 0, 0, 0],
-            padding: [0, 0, 0, 0],
-        };
-        UINode {
-            box_dimensions: cell_dimensions,
-            children: cell_children,
-            texture_meta: cell_meta,
-            // every cell is the same
-            identifier: UIIdentifier::Cell { parent: parent_id, index: cell_index },
-            render_version: parent_version,
-            event_handler: None,
-            render_state_changed_handler: None,
         }
     }
     fn get_cell_lengths_and_positions_tangent_dir(
@@ -664,9 +842,9 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
         uniform_division: bool,
         alignment: Either<HorizontalAlignment, VerticalAlignment>,
     ) -> Vec<(u32, u32)> {
-        assert!(children_lengths.len() > 0);
         if uniform_division {
             let num_children = children_lengths.len();
+            let num_children = usize::min(num_children, 1);
             let cell_length = total_length / num_children as u32;
             let cell_lengths_and_positions = (0..num_children)
                 .map(|i| {
@@ -724,15 +902,20 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             .collect::<Vec<_>>();
         cell_lengths_and_positions
     }
+
+    fn children_array_to_dummy_cells(){
+        // to do
+        todo!()
+    }
     pub fn flatten_children(
         self,
-        parent_global_x: u32, // assume it does not take into account parent's padding
-        parent_global_y: u32,
-        parent_width: u32,
-        parent_height: u32,
+        cell_global_x: u32, // assume it does not take into account parent's padding
+        cell_global_y: u32,
+        cell_width: u32,
+        cell_height: u32,
         h_alignment: HorizontalAlignment, // if the outermost node is a canvas that covers the entire screen, it does not matter
         v_alignment: VerticalAlignment,
-    ) -> UINode<BoxDimensionsWithGlobal, ChildrenAreCells> {
+    ) -> UINode<BoxDimensionsWithGlobal, ChildrenAreDummyCells> {
         let UINode {
             box_dimensions,
             children,
@@ -746,9 +929,9 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
             UIIdentifier::Component(id) => id,
             _ => unreachable!(),
         };
-        let width_difference = parent_width as i32 - box_dimensions.width_with_margin() as i32;
+        let width_difference = cell_width as i32 - box_dimensions.width_with_margin() as i32;
         let width_difference = i32::max(width_difference, 0) as u32;
-        let height_difference = parent_height as i32 - box_dimensions.height_with_margin() as i32;
+        let height_difference = cell_height as i32 - box_dimensions.height_with_margin() as i32;
         let height_difference = i32::max(height_difference, 0) as u32;
         let left_padding = match h_alignment {
             HorizontalAlignment::Left => 0,
@@ -762,14 +945,12 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
         };
         let self_rel_x = left_padding + box_dimensions.margin[3];
         let self_rel_y = top_padding + box_dimensions.margin[0];
-        let self_global_x = parent_global_x + self_rel_x;
-        let self_global_y = parent_global_y + self_rel_y;
-        let children: ChildrenAreCells = match children {
+        let self_global_x = cell_global_x + self_rel_x;
+        let self_global_y = cell_global_y + self_rel_y;
+        let children: ChildrenAreDummyCells = match children {
             StructuredChildren::NoChildren => {
-                ChildrenAreCells {
+                ChildrenAreDummyCells {
                     cells: vec![],
-                    h_alignment: HorizontalAlignment::Left, //don't care
-                    v_alignment: VerticalAlignment::Top,    // don't care
                 }
             }
             StructuredChildren::OneChild {
@@ -789,16 +970,11 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                     cell_pos_y,
                     self_global_x,
                     self_global_y,
-                    h_alignment.clone(),
-                    v_alignment.clone(),
-                    parent_id.clone(),
-                    0, // index is not used for one child
-                    version,
-                );
-                ChildrenAreCells {
-                    cells: vec![cell],
-                    h_alignment, // this is likely to have no effect now
+                    h_alignment,
                     v_alignment,
+                );
+                ChildrenAreDummyCells {
+                    cells: vec![cell],
                 }
             }
             StructuredChildren::HorizontalLayout {
@@ -807,13 +983,6 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                 uniform_division,
                 children,
             } => {
-                if children.len() == 0 {
-                    ChildrenAreCells {
-                        cells: vec![],
-                        h_alignment,
-                        v_alignment,
-                    }
-                } else {
                     let num_children = children.len();
                     let total_width = box_dimensions.inner_width();
                     let children_widths = children
@@ -859,19 +1028,13 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                                     self_global_y,
                                     h_alignment.clone(),
                                     v_alignment.clone(),
-                                    parent_id.clone(),
-                                    i as u64, // index is used for horizontal layout
-                                    version,
                                 )
                             },
                         )
                         .collect();
-                    ChildrenAreCells {
+                    ChildrenAreDummyCells {
                         cells,
-                        h_alignment,
-                        v_alignment,
                     }
-                }
             }
             StructuredChildren::VerticalLayout {
                 h_alignment,
@@ -879,13 +1042,6 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                 uniform_division,
                 children,
             } => {
-                if children.len() == 0 {
-                    ChildrenAreCells {
-                        cells: vec![],
-                        h_alignment,
-                        v_alignment,
-                    }
-                } else {
                     let num_children = children.len();
                     let total_height = box_dimensions.inner_height();
                     let children_heights = children
@@ -930,19 +1086,13 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
                                     self_global_y,
                                     h_alignment.clone(),
                                     v_alignment.clone(),
-                                    parent_id.clone(),
-                                    i as u64, // index is used for vertical layout
-                                    version,
                                 )
                             },
                         )
                         .collect();
-                    ChildrenAreCells {
+                    ChildrenAreDummyCells {
                         cells,
-                        h_alignment,
-                        v_alignment,
                     }
-                }
             }
         };
         let box_dimensions = BoxDimensionsWithGlobal {
@@ -967,7 +1117,7 @@ impl UINode<BoxDimensionsAbsolute, StructuredChildren<BoxDimensionsAbsolute>> {
     }
 }
 
-impl UINode<BoxDimensionsWithGlobal, ChildrenAreCells> {
+impl UINode<BoxDimensionsWithGlobal, ChildrenAreDummyCells> {
     pub fn to_unified(self) -> UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         let UINode {
             box_dimensions,
@@ -1099,7 +1249,7 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         }
         result
     }
-    fn process_event(&self, event: &UINodeEventRaw) -> UINodeEventProcessed {
+    fn process_event(&self, event: &UINodeEvent) -> UINodeEventProcessed {
         let box_dimensions = &self.box_dimensions;
         let mouse_hover_left_half = 
             event.mouse_x >= box_dimensions.global_pos_x
@@ -1138,7 +1288,7 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
         }
     }
     /// the return value specifies whether the current UI element and its parent have a state change
-    pub fn handle_event(&self, event: &UINodeEventRaw)->bool{
+    pub fn handle_event(&self, event: &UINodeEvent)->bool{
         
         let event_processed = self.process_event(event);
         let mut state_changed = false;
@@ -1158,7 +1308,7 @@ impl UINode<BoxDimensionsWithGlobal, UnifiedChildren> {
 }
 
 
-pub struct UINodeEventRaw{
+pub struct UINodeEvent{
     pub mouse_x: u32,
     pub mouse_y: u32,
     pub mouse_left: bool,

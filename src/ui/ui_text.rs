@@ -3,7 +3,7 @@ use std::{any::TypeId, sync::{Arc, Mutex, RwLock}};
 use either::Either;
 use winit::keyboard::KeyCode;
 
-use crate::{cache::{get_font, CacheValue}, ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, RelativeLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UINodeEventProcessed, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
+use crate::{cache::{get_font, CacheValue}, ui_node::{BoundedLength, BoxDimensionsRelative, ComponentIdentifier, HorizontalAlignment, DependentLength, StructuredChildren, ToUINode, UIIdentifier, UINode, UINodeEventProcessed, VerticalAlignment, UI_IDENTIFIER_MAP}, ui_renderable::TextureMeta};
 
 use super::ui_char::{CharCursor, UIChar};
 
@@ -140,8 +140,8 @@ impl UIText {
         initial_text: String,
         font_path: String,
         scale: f32,
-        margin: Either<RelativeLength, [RelativeLength; 4]>,
-        padding: Either<RelativeLength, [RelativeLength; 4]>,
+        margin: Either<DependentLength, [DependentLength; 4]>,
+        padding: Either<DependentLength, [DependentLength; 4]>,
         color: cgmath::Vector4<f32>,
         width: BoundedLength,
         height: BoundedLength,
@@ -435,16 +435,16 @@ impl ToUINode for DummyUIChar {
             width: BoundedLength::fixed_pixels(width),
             height: BoundedLength::fixed_pixels(height),
             margin: [
-                RelativeLength::Pixels(line_gap / 2),
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(line_gap / 2),
-                RelativeLength::Pixels(0),
+                DependentLength::Pixels(line_gap / 2),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(line_gap / 2),
+                DependentLength::Pixels(0),
             ],
             padding: [
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
-                RelativeLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
+                DependentLength::Pixels(0),
             ],
         };
         UINode {
